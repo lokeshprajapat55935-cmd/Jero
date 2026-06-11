@@ -7,7 +7,7 @@ export const PAYMENT_STATUSES = ['pending', 'processing', 'paid', 'failed'] as c
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const BOOKING_STATUSES = [
-  'scheduled',        // Created but not yet dispatched (future booking)
+  'scheduled',
   'pending',
   'broadcasting',
   'accepted',
@@ -16,22 +16,17 @@ export const BOOKING_STATUSES = [
   'arrived',
   'work_started',
   'started',
-  'in_progress',       // Legacy/Alias for work_started
   'work_completed',
-  'work_completed_pending_otp',
-  'awaiting_otp',      // Legacy/Alias for work_completed_pending_otp
   'awaiting_item_approval',
   'item_approved',
-  'otp_generated',
-  'otp_verified',
   'awaiting_payment',
   'payment_processing',
-  'payment_verified',
+  'work_completed_pending_otp',
+  'otp_verified',
   'completed',
-  'paid_completed',    // Legacy/Alias for completed
   'cancelled',
   'disputed',
-  'no_worker_available', // All dispatch attempts exhausted
+  'no_worker_available',
 ] as const;
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
@@ -47,17 +42,15 @@ const TRANSITIONS: Record<string, BookingStatus[]> = {
   worker_arriving: ['arrived', 'work_started', 'started', 'cancelled'],
   en_route: ['arrived', 'started', 'cancelled'],
   arrived: ['work_started', 'started', 'cancelled'],
-  work_started: ['work_completed', 'work_completed_pending_otp', 'cancelled', 'disputed'],
-  started: ['work_completed', 'work_completed_pending_otp', 'cancelled', 'disputed'],
-  work_completed: ['awaiting_item_approval', 'completed'],
-  work_completed_pending_otp: ['completed', 'disputed'],
+  work_started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'cancelled', 'disputed'],
+  started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'cancelled', 'disputed'],
+  work_completed: ['awaiting_item_approval', 'work_completed_pending_otp', 'completed'],
   awaiting_item_approval: ['item_approved', 'disputed', 'cancelled'],
-  item_approved: ['otp_generated', 'disputed', 'cancelled'],
-  otp_generated: ['otp_verified', 'disputed'],
-  otp_verified: ['awaiting_payment', 'disputed', 'completed'],
-  awaiting_payment: ['payment_processing', 'completed', 'disputed'],
-  payment_processing: ['payment_verified', 'completed', 'awaiting_payment', 'disputed'],
-  payment_verified: ['completed'],
+  item_approved: ['awaiting_payment', 'work_completed_pending_otp', 'disputed', 'cancelled'],
+  awaiting_payment: ['payment_processing', 'work_completed_pending_otp', 'completed', 'disputed'],
+  payment_processing: ['work_completed_pending_otp', 'completed', 'awaiting_payment', 'disputed'],
+  work_completed_pending_otp: ['completed', 'disputed'],
+  otp_verified: ['completed'],
   completed: [],
   cancelled: [],
   no_worker_available: ['broadcasting', 'cancelled'],

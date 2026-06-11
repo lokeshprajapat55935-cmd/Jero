@@ -26,8 +26,7 @@ export function BookingStatusActions({
     if (canTransition(status, 'worker_arriving' as any)) actions.push({ label: 'Mark Arriving', next: 'worker_arriving' });
     if (canTransition(status, 'work_started' as any)) actions.push({ label: 'Start job', next: 'work_started' });
     if (canTransition(status, 'work_completed' as any)) actions.push({ label: 'Mark Work Completed', next: 'work_completed' });
-    if (canTransition(status, 'otp_generated' as any)) actions.push({ label: 'Request OTP', next: 'otp_generated' });
-    if (canTransition(status, 'completed' as any)) actions.push({ label: 'Mark complete', next: 'completed' });
+    if (canTransition(status, 'work_completed_pending_otp' as any)) actions.push({ label: 'Request OTP', next: 'work_completed_pending_otp' });
   }
 
   if (role === 'client') {

@@ -74,13 +74,9 @@ export async function POST(request: Request) {
     if (fetchErr) throw fetchErr;
     if (!booking) return createErrorResponse('Booking not found', 404);
 
-    // Only assigned worker can add items
-    if (booking.worker_id !== userId) {
-      return createErrorResponse('Forbidden: Only the assigned worker can add materials', 403);
-    }
-
-    // Must be in work_completed or awaiting_item_approval
-    if (booking.status !== 'work_completed' && booking.status !== 'awaiting_item_approval') {
+    // Allow adding items in active work states
+    const allowedStatuses = ['work_started', 'started', 'work_completed', 'awaiting_item_approval', 'item_approved', 'work_completed_pending_otp'];
+    if (!allowedStatuses.includes(booking.status)) {
       return createErrorResponse(`Cannot add items in current booking status: ${booking.status}`, 400);
     }
 
@@ -113,8 +109,11 @@ export async function POST(request: Request) {
     const totalMaterials = (items || []).reduce((sum, item) => sum + Number(item.total_price), 0);
 
     // Update material charge on booking.
-    // Transition status to awaiting_item_approval automatically if it was work_completed.
-    const newStatus = booking.status === 'work_completed' ? 'awaiting_item_approval' : booking.status;
+    // Transition status to awaiting_item_approval automatically if it was in a preliminary completion state.
+    let newStatus = booking.status;
+    if (['work_started', 'started', 'work_completed'].includes(booking.status)) {
+      newStatus = 'awaiting_item_approval';
+    }
     const { data: updatedBooking, error: updateErr } = await admin
       .from('bookings')
       .update({
