@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.zolvo.app",
+      "sha256_cert_fingerprints": [
+        "14:6D:E9:83:C5:E9:9D:05:22:98:92:F3:48:8D:18:66:88:EC:3A:4E:87:C5:E5:A9:A8:D5:A6:44:8D:E7:F4:D5"
+      ]
+    }
+  }
+]

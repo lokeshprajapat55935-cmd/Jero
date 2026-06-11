@@ -1,0 +1,32 @@
+'use client';
+
+import React from 'react';
+import dynamic from 'next/dynamic';
+import { Wallet, Loader2 } from 'lucide-react';
+
+const AdminWalletPanel = dynamic(
+  () => import('@/components/admin/AdminWalletPanel').then((mod) => mod.AdminWalletPanel),
+  {
+    loading: () => (
+      <div className="flex items-center justify-center py-20 gap-3 bg-white/3 border border-white/8 rounded-2xl">
+        <Loader2 className="animate-spin text-violet-400" size={24} />
+        <p className="text-white/40 font-bold text-sm">Loading finance panel...</p>
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
+export default function FinancePage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-[11px] font-black uppercase tracking-widest text-white/40 mb-1">Finance</p>
+        <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+          <Wallet size={20} className="text-violet-400" /> Finance Dashboard
+        </h1>
+      </div>
+      <AdminWalletPanel />
+    </div>
+  );
+}
