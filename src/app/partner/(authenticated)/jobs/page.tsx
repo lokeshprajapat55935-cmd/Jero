@@ -169,14 +169,14 @@ export default function PartnerJobsPage() {
     acceptJob,
     rejectJob,
     refresh,
-  } = useDispatch(user?.uid ?? null);
+  } = useDispatch(user?.id ?? null);
 
   const {
     activeJobs,
     completedJobs,
     isLoading: isJobsLoading,
     error: jobsError,
-  } = useWorkerJobs(user?.uid ?? null);
+  } = useWorkerJobs(user?.id ?? null);
 
   const handleAccept = async (id: string): Promise<boolean> => {
     setAcceptingId(id);

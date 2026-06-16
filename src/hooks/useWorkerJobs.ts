@@ -6,20 +6,22 @@ import { Booking } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 
-export function useWorkerJobs(workerId: string | null) {
-  const [newJobs, setNewJobs] = useState<Booking[]>([]);
+const ACTIVE_STATUSES = new Set([
+  'accepted', 'worker_arriving', 'en_route', 'arrived', 
+  'work_started', 'started', 'in_progress', 
+  'work_completed', 'work_completed_pending_otp', 'awaiting_otp', 'otp_generated',
+  'awaiting_item_approval', 'item_approved', 'otp_verified',
+  'awaiting_payment', 'payment_processing', 'payment_verified'
+]);
+
+const COMPLETED_STATUSES = new Set(['completed', 'paid_completed', 'cancelled', 'disputed']);
+
+export function useWorkerJobs(workerId: string | null) { 
+  const [newJobs, setNewJobs] = useState<Booking[]>([]); 
   const [activeJobs, setActiveJobs] = useState<Booking[]>([]);
   const [completedJobs, setCompletedJobs] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const ACTIVE_STATUSES = new Set([
-    'accepted', 'worker_arriving', 'work_started', 'work_completed',
-    'awaiting_item_approval', 'item_approved', 'otp_generated',
-    'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified',
-  ]);
-
-  const COMPLETED_STATUSES = new Set(['completed', 'cancelled', 'disputed']);
 
   const fetchJobs = useCallback(async (silent = false) => {
     if (!workerId) return;

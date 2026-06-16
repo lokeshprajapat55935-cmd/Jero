@@ -63,7 +63,7 @@ export function I18nProvider({
 
   // Fetch from DB if user is logged in
   useEffect(() => {
-    if (user && user.uid && user.uid !== 'undefined') {
+    if (user && user.id && user.id !== 'undefined') {
       languageApi.getSavedLanguage().then((res) => {
         if (res.data && isLocale(res.data) && res.data !== locale) {
           setLocaleState(res.data);
@@ -84,7 +84,7 @@ export function I18nProvider({
         persistLocaleLocally(localeValue);
         
         // Persist to DB asynchronously if logged in
-        if (user && user.uid && user.uid !== 'undefined') {
+        if (user && user.id && user.id !== 'undefined') {
           languageApi.updateLanguage(localeValue).catch(console.error);
         }
       },

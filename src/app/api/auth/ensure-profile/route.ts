@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
       intent: selectedIntent
     });
 
-    // 1. Try finding the profile by firebase_uid
+    // 1. Try finding the profile by id (Supabase UID) or firebase_uid
     let { data, error } = await admin
       .from('profiles')
       .select('*')
-      .eq('firebase_uid', userId)
+      .or(`id.eq.${userId},firebase_uid.eq.${userId}`)
       .maybeSingle();
 
     if (error) {

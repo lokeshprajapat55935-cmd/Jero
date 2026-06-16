@@ -7,8 +7,9 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url('Invalid NEXT_PUBLIC_SUPABASE_URL format'),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, 'NEXT_PUBLIC_SUPABASE_ANON_KEY is required'),
   NEXT_PUBLIC_SITE_URL: z.string().url().optional().default('http://localhost:3000'),
-  NEXT_PUBLIC_OTP_PROVIDER: z.enum(['mock', 'supabase']).optional().default('mock'),
+  NEXT_PUBLIC_OTP_PROVIDER: z.enum(['firebase', 'mock']).optional().default('firebase'),
   NEXT_PUBLIC_DEV_OTP_CODE: z.string().optional().default('123456'),
+  NEXT_PUBLIC_MOCK_OTP_MODE: z.string().optional().transform(v => v === 'true').default(false),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
@@ -28,6 +29,7 @@ const envData = {
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
   NEXT_PUBLIC_OTP_PROVIDER: process.env.NEXT_PUBLIC_OTP_PROVIDER,
   NEXT_PUBLIC_DEV_OTP_CODE: process.env.NEXT_PUBLIC_DEV_OTP_CODE,
+  NEXT_PUBLIC_MOCK_OTP_MODE: process.env.NEXT_PUBLIC_MOCK_OTP_MODE,
   NODE_ENV: process.env.NODE_ENV,
   ...(isServer ? {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -57,8 +59,9 @@ export const config = {
       serviceRoleKey: isServer ? ((env as any).SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) : undefined,
     },
     otp: {
-      provider: env.NEXT_PUBLIC_OTP_PROVIDER || process.env.NEXT_PUBLIC_OTP_PROVIDER || 'mock',
+      provider: env.NEXT_PUBLIC_OTP_PROVIDER || process.env.NEXT_PUBLIC_OTP_PROVIDER || 'firebase',
       devCode: env.NEXT_PUBLIC_DEV_OTP_CODE || process.env.NEXT_PUBLIC_DEV_OTP_CODE || '123456',
+      mockMode: env.NEXT_PUBLIC_MOCK_OTP_MODE,
       devAuthPassword: isServer ? ((env as any).DEV_AUTH_PASSWORD || process.env.DEV_AUTH_PASSWORD || 'zolvo-local-dev-auth-only') : undefined,
     },
     isDev: (env.NODE_ENV || process.env.NODE_ENV || 'development') === 'development',

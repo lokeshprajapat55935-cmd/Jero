@@ -119,10 +119,9 @@ export default function BookingDetailPage() {
   if (booking.status === 'work_completed_pending_otp' && completionOtp) {
     booking.otp_code = completionOtp;
   }
-  const showOtp = (booking.status === 'otp_generated' && booking.otp_code) ||
-                  (booking.status === 'work_completed_pending_otp' && completionOtp);
+  const showOtp = (booking.status === 'work_completed_pending_otp' || booking.status === 'otp_generated') && (booking.otp_code || completionOtp);
   const showPayment = booking.status === 'awaiting_payment' || booking.status === 'otp_verified';
-  const isCompleted = booking.status === 'completed' || booking.status === 'payment_verified';
+  const isCompleted = booking.status === 'completed' || booking.status === 'paid_completed';
 
   const customerLat = booking.latitude;
   const customerLng = booking.longitude;

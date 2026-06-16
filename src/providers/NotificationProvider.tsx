@@ -23,7 +23,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchInitialData = useCallback(async () => {
-    if (!user || !user.uid || user.uid === 'undefined') {
+    if (!user || !user.id || user.id === 'undefined') {
       setNotifications([]);
       setUnreadCount(0);
       setIsLoading(false);
@@ -44,20 +44,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     fetchInitialData();
 
-    if (!user || !user.uid || user.uid === 'undefined') return;
+    if (!user || !user.id || user.id === 'undefined') return;
 
     const supabase = createClient();
 
     // Real-time subscription
     const channel = supabase
-      .channel(`notifications:${user.uid}`)
+      .channel(`notifications:${user.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.uid}`,
+          filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
           const { eventType, new: newRow, old: oldRow } = payload;

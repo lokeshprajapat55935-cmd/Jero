@@ -3,22 +3,21 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { FileQuestion } from 'lucide-react';
-import { useI18n } from '@/providers/I18nProvider';
+
+export const dynamic = 'force-dynamic';
 
 export default function NotFound() {
-  const { t } = useI18n();
-
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center p-6 text-center">
       <div className="mb-4 rounded-full bg-secondary p-4 text-muted-foreground">
         <FileQuestion size={48} />
       </div>
-      <h2 className="mb-2 text-2xl font-bold">{t("errors.pageNotFound")}</h2>
+      <h2 className="mb-2 text-2xl font-bold">Page Not Found</h2>
       <p className="mb-8 text-muted-foreground">
-        {t("errors.pageNotFoundHint")}
+        The page you are looking for doesn&apos;t exist or has been moved.
       </p>
       <Link href="/">
-        <Button>{t("common.returnHome")}</Button>
+        <Button>Return Home</Button>
       </Link>
     </div>
   );

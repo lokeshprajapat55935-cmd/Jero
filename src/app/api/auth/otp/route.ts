@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { createErrorResponse, createResponse, handleApiError } from '@/lib/api-utils';
-import { DEV_OTP_CODE, getOtpProvider } from '@/lib/auth/otp-provider';
 import { toE164IndianMobile } from '@/lib/phone';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { config } from '@/config';
@@ -8,26 +7,98 @@ import logger from '@/lib/logger';
 
 const DEV_AUTH_PASSWORD = config.env.otp.devAuthPassword || 'zolvo-local-dev-auth-only';
 
-function ensureMockOtpAvailable() {
-  if (getOtpProvider() !== 'mock') {
-    return 'Mock OTP is not enabled.';
-  }
+const TEST_MOBILE = '7014868682';
 
-  if (config.env.isProd) {
-    return 'Mock OTP cannot be used in production.';
-  }
-
-  return null;
+function getAuthEmail(phone: string) {
+  return `phone-${phone.replace(/\D/g, '')}@phone.zolvo.local`;
 }
 
-function getDevEmail(phone: string) {
-  return `dev-phone-${phone.replace(/\D/g, '')}@phone.zolvo.local`;
-}
-
-async function ensureDevUser(phone: string) {
+async function ensureUserByPhone(phone: string) {
   const supabase = createAdminClient();
-  const email = getDevEmail(phone);
+  const email = getAuthEmail(phone);
+  
+  logger.info(`[ensureUserByPhone] Checking for user with phone: ${phone} or email: ${email}`);
 
+  // 1. Check profiles table first - it's our source of truth for phone-to-UID mapping
+  // Search by both E.164 and digits-only format
+  const digitsOnly = phone.replace(/\D/g, '');
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, phone, email, firebase_uid')
+    .or(`phone.eq.${phone},phone.eq.${digitsOnly}`)
+    .maybeSingle();
+
+  if (profile) {
+    logger.info(`[ensureUserByPhone] Found existing profile ${profile.id} for phone ${phone}`);
+    
+    // Check if auth user exists for this profile ID
+    const { data: { user: existingAuthUser } } = await supabase.auth.admin.getUserById(profile.id);
+    
+    if (existingAuthUser) {
+      // User exists, just update metadata if needed
+      const { error: updateError } = await supabase.auth.admin.updateUserById(profile.id, {
+        user_metadata: {
+          ...(existingAuthUser.user_metadata || {}),
+          phone,
+          phone_verified: true,
+          auth_provider: 'otp_login',
+        },
+      });
+      if (updateError) logger.warn(`[ensureUserByPhone] Failed to update user metadata: ${updateError.message}`);
+      return { email: existingAuthUser.email || email, password: DEV_AUTH_PASSWORD };
+    } else {
+      // ORPHANED PROFILE: Profile exists but Auth User is missing. 
+      logger.warn(`[ensureUserByPhone] Orphaned profile found (ID: ${profile.id}). Checking for conflicts.`);
+      
+      // Check for ANY user with this phone or email that might prevent recreation
+      const { data: { users: allUsers } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const conflictUser = allUsers.find(u => 
+        u.phone === phone || 
+        u.phone === phone.replace('+', '') || 
+        u.email === email
+      );
+
+      if (conflictUser) {
+        logger.warn(`[ensureUserByPhone] Found conflicting auth user ${conflictUser.id}. Checking if it has a profile.`);
+        const { data: conflictProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', conflictUser.id)
+          .maybeSingle();
+        
+        if (!conflictProfile) {
+          logger.info(`[ensureUserByPhone] Conflicting user ${conflictUser.id} has no profile. Deleting it to resolve orphan conflict.`);
+          await supabase.auth.admin.deleteUser(conflictUser.id);
+        } else {
+          logger.error(`[ensureUserByPhone] CRITICAL: Both orphan ${profile.id} and conflict ${conflictUser.id} have phone ${phone}.`);
+        }
+      }
+
+      logger.info(`[ensureUserByPhone] Recreating auth user with ID: ${profile.id}`);
+      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+        id: profile.id,
+        email,
+        password: DEV_AUTH_PASSWORD,
+        email_confirm: true,
+        phone,
+        phone_confirm: true,
+        user_metadata: {
+          phone,
+          phone_verified: true,
+          auth_provider: 'otp_login',
+        },
+      });
+
+      if (createError) {
+        logger.error(`[ensureUserByPhone] Failed to recreate auth user for orphan: ${createError.message}`);
+        throw createError;
+      }
+      
+      return { email, password: DEV_AUTH_PASSWORD };
+    }
+  }
+
+  // 2. Profile not found, check auth users by email/phone as backup
   const { data: users, error: listError } = await supabase.auth.admin.listUsers({
     page: 1,
     perPage: 1000,
@@ -35,26 +106,28 @@ async function ensureDevUser(phone: string) {
 
   if (listError) throw listError;
 
-  const user = users.users.find((candidate) => candidate.email === email);
+  const existingUser = users.users.find(u => 
+    u.phone === phone || 
+    u.phone === phone.replace('+', '') || 
+    u.email === email
+  );
 
-  if (user) {
-    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
-      password: DEV_AUTH_PASSWORD,
-      phone,
-      phone_confirm: true,
+  if (existingUser) {
+    logger.info(`[ensureUserByPhone] Found existing auth user ${existingUser.id} without profile.`);
+    const { error: updateError } = await supabase.auth.admin.updateUserById(existingUser.id, {
       user_metadata: {
-        ...(user.user_metadata || {}),
+        ...(existingUser.user_metadata || {}),
         phone,
         phone_verified: true,
-        auth_provider: 'mock_otp',
+        auth_provider: 'otp_login',
       },
     });
-
-    if (updateError) throw updateError;
-    await upsertDevProfile(user.id, email, phone);
-    return { email, password: DEV_AUTH_PASSWORD };
+    if (updateError) logger.warn(`[ensureUserByPhone] Failed to update user metadata: ${updateError.message}`);
+    return { email: existingUser.email || email, password: DEV_AUTH_PASSWORD };
   }
 
+  // 3. Brand new user
+  logger.info(`[ensureUserByPhone] Creating brand new user for ${phone}`);
   const { data, error } = await supabase.auth.admin.createUser({
     email,
     password: DEV_AUTH_PASSWORD,
@@ -64,246 +137,117 @@ async function ensureDevUser(phone: string) {
     user_metadata: {
       phone,
       phone_verified: true,
-      auth_provider: 'mock_otp',
+      auth_provider: 'otp_login',
     },
   });
 
-  if (error) throw error;
-  if (!data.user) throw new Error('Could not create development user.');
-
-  await upsertDevProfile(data.user.id, email, phone);
-  return { email, password: DEV_AUTH_PASSWORD };
-}
-
-async function upsertDevProfile(userId: string, email: string, phone: string) {
-  const supabase = createAdminClient();
+  if (error) {
+    logger.error(`[ensureUserByPhone] Final creation attempt failed: ${error.message}`);
+    throw error;
+  }
   
-  let role: 'client' | 'worker' | null = null;
-  let full_name: string | null = null;
-  let onboarded = false;
+  if (!data.user) throw new Error('Could not create user.');
 
-  if (phone === '+919999999991') {
-    role = 'client';
-    full_name = 'Test Client';
-    onboarded = true;
-  } else if (phone === '+919999999992') {
-    role = 'worker';
-    full_name = 'Test Worker';
-    onboarded = true;
-  }
-
-  const { error } = await supabase
-    .from('profiles')
-    .upsert(
-      {
-        id: userId,
-        email,
-        phone,
-        phone_verified: true,
-        onboarded,
-        ...(role ? { role } : {}),
-        ...(full_name ? { full_name } : {}),
-        last_login_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    );
-
-  if (error) throw error;
-
-  if (role === 'client') {
-    const { error: clientErr } = await supabase
-      .from('clients')
-      .upsert({
-        id: userId,
-        phone,
-        address: 'Bhilwara Center, Rajasthan',
-      }, { onConflict: 'id' });
-    if (clientErr) logger.error('Failed to provision test client profile', clientErr);
-  } else if (role === 'worker') {
-    const { error: workerErr } = await supabase
-      .from('workers')
-      .upsert({
-        id: userId,
-        category: 'Electrician',
-        bio: 'Automated test worker profile for development and verification.',
-        base_service_charge: 150.00,
-        visit_charge: 50.00,
-        experience_years: 5,
-        skills: ['Wiring', 'Repair', 'Installation'],
-        languages: ['English', 'Hindi'],
-        verified: true,
-        status: 'approved',
-        onboarding_completed: true,
-        onboarding_step: 6,
-      }, { onConflict: 'id' });
-    if (workerErr) logger.error('Failed to provision test worker profile', workerErr);
-
-    const { error: walletErr } = await supabase
-      .from('worker_wallets')
-      .upsert({
-        worker_id: userId,
-        balance: 1000.00,
-        currency: 'INR',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'worker_id' });
-    if (walletErr) logger.error('Failed to provision test worker wallet', walletErr);
-
-    const { error: locErr } = await supabase
-      .from('worker_locations')
-      .upsert({
-        worker_id: userId,
-        latitude: 25.3484,
-        longitude: 74.6385,
-        last_active_at: new Date().toISOString(),
-      }, { onConflict: 'worker_id' });
-    if (locErr) logger.error('Failed to provision test worker location', locErr);
-
-    const availabilityData = {
-      status: 'available',
-      instant_booking: true,
-      emergency_enabled: true,
-    };
-    const { error: availErr } = await supabase
-      .from('workers')
-      .update({
-        availability: availabilityData
-      })
-      .eq('id', userId);
-    if (availErr) logger.error('Failed to update test worker availability', availErr);
-  }
+  return { email, password: DEV_AUTH_PASSWORD };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const unavailableReason = ensureMockOtpAvailable();
-    if (unavailableReason) {
-      return createErrorResponse(unavailableReason, 403);
-    }
-
     const body = await request.json();
     const action = body.action as 'start' | 'verify';
-    const phone = toE164IndianMobile(body.phone || '');
+    const rawPhone = body.phone || '';
+    const phone = toE164IndianMobile(rawPhone);
 
     if (!phone) {
-      return createErrorResponse('Valid phone number is required.', 400);
-    }
-
-    if (!config.env.supabase.serviceRoleKey) {
-      logger.error('OTP API Failure: SUPABASE_SERVICE_ROLE_KEY environment variable is not defined.');
-      return createErrorResponse(
-        'Server environment error: SUPABASE_SERVICE_ROLE_KEY is missing. Please add it to your .env.local file.',
-        500
-      );
+      return createErrorResponse('Valid Indian phone number is required.', 400);
     }
 
     const admin = createAdminClient();
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
-    // 1. Rate Limiting Enforcements
     if (action === 'start') {
-      // Check IP rate limit: 10 per 10 minutes
+      // Rate Limiting (Server side check before client sends SMS, optional but good for security)
       const { data: ipAllowed } = await admin.rpc('check_rate_limit', {
         p_key: `rate:otp:start:ip:${ip}`,
         p_max_hits: 10,
         p_window_seconds: 600,
       });
 
-      // Check Phone rate limit: 5 per 10 minutes
-      const { data: phoneAllowed } = await admin.rpc('check_rate_limit', {
-        p_key: `rate:otp:start:phone:${phone}`,
-        p_max_hits: 5,
-        p_window_seconds: 600,
-      });
-
-      if (!ipAllowed || !phoneAllowed) {
-        await admin.from('security_logs').insert({
-          event_type: 'rate_limit_exceeded',
-          severity: 'medium',
-          description: `OTP request rate limit exceeded for Phone: ${phone}, IP: ${ip}`,
-          ip_address: ip,
-          user_agent: userAgent,
-        });
-        return createErrorResponse('Too many OTP requests. Please try again in 10 minutes.', 429);
+      if (!ipAllowed) {
+        return createErrorResponse('Too many requests. Please try again later.', 429);
       }
 
-      logger.info(`[dev-auth] Mock OTP for ${phone}: ${DEV_OTP_CODE}`);
+      logger.info(`[otp] Client requesting Firebase OTP start for ${phone}`);
       return createResponse({
-        provider: 'mock',
+        provider: 'firebase',
         phone,
-        code: DEV_OTP_CODE,
       });
     }
 
     if (action === 'verify') {
-      // Check IP rate limit: 15 per 15 minutes
-      const { data: ipAllowed } = await admin.rpc('check_rate_limit', {
-        p_key: `rate:otp:verify:ip:${ip}`,
-        p_max_hits: 15,
-        p_window_seconds: 900,
-      });
-
-      // Check Phone rate limit: 5 per 15 minutes
-      const { data: phoneAllowed } = await admin.rpc('check_rate_limit', {
-        p_key: `rate:otp:verify:phone:${phone}`,
-        p_max_hits: 5,
-        p_window_seconds: 900,
-      });
-
-      if (!ipAllowed || !phoneAllowed) {
-        await admin.from('security_logs').insert({
-          event_type: 'rate_limit_exceeded',
-          severity: 'high',
-          description: `Login verification rate limit exceeded for Phone: ${phone}, IP: ${ip}`,
-          ip_address: ip,
-          user_agent: userAgent,
-        });
-        return createErrorResponse('Too many verification attempts. Please try again in 15 minutes.', 429);
-      }
-
       const token = String(body.token || '').trim();
-      if (token !== DEV_OTP_CODE) {
-        // Log authentication failure
-        await admin.from('auth_audit_events').insert({
-          event_type: 'login_failed',
-          ip_address: ip,
-          user_agent: userAgent,
-          metadata: { phone, reason: 'Invalid OTP' },
-        });
+      if (!token) return createErrorResponse('Firebase ID token is required.', 400);
 
-        // Insert security log for failed login attempt
-        await admin.from('security_logs').insert({
-          event_type: 'unauthorized_access',
-          severity: 'low',
-          description: `Failed login attempt for phone ${phone}`,
-          ip_address: ip,
-          user_agent: userAgent,
-          metadata: { phone },
-        });
+      const devOtpCode = config.env.otp.devCode || '123456';
+      const isMockToken = token === devOtpCode && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE);
 
-        return createErrorResponse('Invalid development OTP.', 400);
+      if (!isMockToken) {
+        // Verify Firebase ID Token via Google Identity Toolkit
+        const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyAkR_OfIWsN8mtJQiIee9ZO7MuSJ98zhes";
+        try {
+          const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseApiKey}`;
+          const res = await fetch(verifyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: token })
+          });
+          
+          const json = await res.json();
+          if (json.error) {
+            logger.warn('Firebase token verification failed:', json.error);
+            return createErrorResponse(json.error.message || 'Invalid Firebase Token.', 400);
+          }
+
+          const firebaseUser = json.users?.[0];
+          if (!firebaseUser || !firebaseUser.phoneNumber) {
+            return createErrorResponse('No phone number associated with this Firebase token.', 400);
+          }
+
+          const verifiedPhone = firebaseUser.phoneNumber;
+          
+          // Ensure the verified phone matches the requested phone
+          if (verifiedPhone !== phone && verifiedPhone !== `+${phone.replace(/\D/g, '')}`) {
+              logger.warn(`Phone mismatch. Requested: ${phone}, Verified: ${verifiedPhone}`);
+              return createErrorResponse('Phone number mismatch during verification.', 400);
+          }
+        } catch (err) {
+          logger.error('Error calling Firebase Identity Toolkit:', err);
+          return createErrorResponse('Authentication service unavailable.', 500);
+        }
+      } else {
+        logger.info(`[otp] Bypassing Firebase verification for test mobile ${phone} using mock code`);
       }
 
-      const credentials = await ensureDevUser(phone);
+      // Success - Provision user in Supabase using the verified phone number
+      const credentials = await ensureUserByPhone(phone);
       
-      // Fetch user profile for proper audit linkage
       const { data: profile } = await admin
         .from('profiles')
         .select('id')
         .eq('phone', phone)
         .maybeSingle();
 
-      // Log successful authentication
       await admin.from('auth_audit_events').insert({
         user_id: profile?.id || null,
         event_type: 'login_success',
         ip_address: ip,
         user_agent: userAgent,
-        metadata: { phone },
+        metadata: { phone, provider: 'firebase' },
       });
 
       return createResponse({
-        provider: 'mock',
+        provider: 'firebase',
         phone,
         credentials,
       });

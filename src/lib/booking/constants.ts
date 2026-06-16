@@ -16,14 +16,19 @@ export const BOOKING_STATUSES = [
   'arrived',
   'work_started',
   'started',
+  'in_progress',       // Alias for work_started
   'work_completed',
+  'work_completed_pending_otp',
+  'awaiting_otp',      // Alias for work_completed_pending_otp
+  'otp_generated',     // Alias for work_completed_pending_otp
   'awaiting_item_approval',
   'item_approved',
+  'otp_verified',      // Intermediate state
   'awaiting_payment',
   'payment_processing',
-  'work_completed_pending_otp',
-  'otp_verified',
+  'payment_verified',  // Online payment confirmed
   'completed',
+  'paid_completed',    // Alias for completed
   'cancelled',
   'disputed',
   'no_worker_available',
@@ -42,16 +47,20 @@ const TRANSITIONS: Record<string, BookingStatus[]> = {
   worker_arriving: ['arrived', 'work_started', 'started', 'cancelled'],
   en_route: ['arrived', 'started', 'cancelled'],
   arrived: ['work_started', 'started', 'cancelled'],
-  work_started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'cancelled', 'disputed'],
-  started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'cancelled', 'disputed'],
-  work_completed: ['awaiting_item_approval', 'work_completed_pending_otp', 'completed'],
+  work_started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
+  started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
+  in_progress: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
+  work_completed: ['awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'completed'],
   awaiting_item_approval: ['item_approved', 'disputed', 'cancelled'],
-  item_approved: ['awaiting_payment', 'work_completed_pending_otp', 'disputed', 'cancelled'],
-  awaiting_payment: ['payment_processing', 'work_completed_pending_otp', 'completed', 'disputed'],
-  payment_processing: ['work_completed_pending_otp', 'completed', 'awaiting_payment', 'disputed'],
-  work_completed_pending_otp: ['completed', 'disputed'],
-  otp_verified: ['completed'],
+  item_approved: ['awaiting_payment', 'work_completed_pending_otp', 'otp_generated', 'disputed', 'cancelled'],
+  awaiting_payment: ['payment_processing', 'payment_verified', 'work_completed_pending_otp', 'otp_generated', 'completed', 'disputed'],
+  payment_processing: ['payment_verified', 'work_completed_pending_otp', 'otp_generated', 'completed', 'awaiting_payment', 'disputed'],
+  payment_verified: ['work_completed_pending_otp', 'otp_generated', 'completed', 'disputed'],
+  work_completed_pending_otp: ['otp_verified', 'completed', 'disputed'],
+  otp_generated: ['otp_verified', 'completed', 'disputed'],
+  otp_verified: ['awaiting_payment', 'completed', 'disputed'],
   completed: [],
+  paid_completed: [],
   cancelled: [],
   no_worker_available: ['broadcasting', 'cancelled'],
   disputed: ['completed', 'cancelled'],
@@ -62,11 +71,18 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
 }
 
 export function isTerminalStatus(status: BookingStatus): boolean {
-  return ['completed', 'cancelled', 'no_worker_available'].includes(status);
+  return ['completed', 'paid_completed', 'cancelled', 'no_worker_available'].includes(status);
 }
 
 export function isActiveStatus(status: BookingStatus): boolean {
-  return ['accepted', 'worker_arriving', 'en_route', 'arrived', 'work_started', 'started', 'work_completed', 'work_completed_pending_otp', 'awaiting_item_approval', 'item_approved'].includes(status);
+  const activeStates: BookingStatus[] = [
+    'accepted', 'worker_arriving', 'en_route', 'arrived', 
+    'work_started', 'started', 'in_progress', 
+    'work_completed', 'work_completed_pending_otp', 'awaiting_otp', 'otp_generated',
+    'awaiting_item_approval', 'item_approved', 'otp_verified',
+    'awaiting_payment', 'payment_processing', 'payment_verified'
+  ];
+  return activeStates.includes(status);
 }
 
 export function isDispatchingStatus(status: BookingStatus): boolean {

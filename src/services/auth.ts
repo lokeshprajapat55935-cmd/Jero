@@ -1,5 +1,4 @@
 import { getSupabaseClient } from '@/lib/supabase/resolveClient';
-import { isMockOtpEnabled } from '@/lib/auth/otp-provider';
 import { toE164IndianMobile } from '@/lib/phone';
 import logger from '@/lib/logger';
 
@@ -9,22 +8,7 @@ type ApiResponse<T> = {
   error?: string;
 };
 
-type MockOtpStartResponse = {
-  provider: 'mock';
-  phone: string;
-  code: string;
-};
-
-type MockOtpVerifyResponse = {
-  provider: 'mock';
-  phone: string;
-  credentials: {
-    email: string;
-    password: string;
-  };
-};
-
-async function postMockOtp<T>(body: Record<string, unknown>) {
+async function postOtp<T>(body: Record<string, unknown>) {
   const response = await fetch('/api/auth/otp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -34,13 +18,23 @@ async function postMockOtp<T>(body: Record<string, unknown>) {
   const payload = (await response.json()) as ApiResponse<T>;
 
   if (!response.ok || !payload.success || !payload.data) {
-    throw new Error(payload.error || 'Development OTP request failed.');
+    throw new Error(payload.error || 'OTP request failed.');
   }
 
   return payload.data;
 }
 
 export const authService = {
+  async sendOtp(phone: string) {
+    const response = await postOtp<any>({ action: 'start', phone });
+    return response;
+  },
+
+  async verifyOtp(phone: string, token: string) {
+    const response = await postOtp<any>({ action: 'verify', phone, token });
+    return response;
+  },
+
   async signIn(email: string, password: string) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.auth.signInWithPassword({

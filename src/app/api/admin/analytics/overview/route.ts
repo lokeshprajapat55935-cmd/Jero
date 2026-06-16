@@ -63,6 +63,7 @@ export async function GET(request: Request) {
                      (bookingCounts.work_completed || 0) + 
                      (bookingCounts.awaiting_item_approval || 0) + 
                      (bookingCounts.item_approved || 0) + 
+                     (bookingCounts.work_completed_pending_otp || 0) +
                      (bookingCounts.otp_generated || 0) + 
                      (bookingCounts.otp_verified || 0) + 
                      (bookingCounts.awaiting_payment || 0) +

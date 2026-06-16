@@ -55,6 +55,8 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
   logger.info(`[getAuthUserId] resolvedId before UUID check: "${resolvedId}"`);
   if (!resolvedId || resolvedId === 'null' || resolvedId === 'undefined') return null;
 
+  let finalUserId = resolvedId;
+
   // Resolve to profiles.id if resolvedId is a Firebase UID (non-UUID string)
   const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(resolvedId);
   if (!isUuid) {
@@ -67,17 +69,54 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
         .maybeSingle();
       if (!error && data?.id) {
         logger.info(`[getAuthUserId] resolved Firebase UID "${resolvedId}" to profile UUID: "${data.id}"`);
-        return data.id;
+        finalUserId = data.id;
+      } else {
+        logger.warn(`[getAuthUserId] Could not resolve profiles UUID for Firebase UID: ${resolvedId}`, { error });
+        return null; // Return null instead of non-UUID string to prevent downstream DB errors
       }
-      logger.warn(`[getAuthUserId] Could not resolve profiles UUID for Firebase UID: ${resolvedId}`, { error });
-      return null; // Return null instead of non-UUID string to prevent downstream DB errors
     } catch (e) {
       logger.error(`[getAuthUserId] Exception resolving profiles UUID for Firebase UID: ${resolvedId}`, e);
       return null;
     }
   }
 
-  return resolvedId;
+  // --- Strict Backend Role Isolation for APIs ---
+  try {
+    const urlStr = request.url || '';
+    if (urlStr) {
+      const url = new URL(urlStr);
+      const pathname = url.pathname;
+      
+      const isCustomerApi = pathname.startsWith('/api/customer/') || pathname.startsWith('/api/client/');
+      const isWorkerApi = pathname.startsWith('/api/worker/') || pathname.startsWith('/api/dispatch/');
+
+      if (isCustomerApi || isWorkerApi) {
+        const admin = createAdminClient();
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('role')
+          .eq('id', finalUserId)
+          .maybeSingle();
+
+        const actualRole = profile?.role;
+        
+        if (isCustomerApi && actualRole === 'worker') {
+          logger.warn(`[Role Isolation] Blocked worker ${finalUserId} from accessing customer API: ${pathname}`);
+          return null;
+        }
+
+        if (isWorkerApi && actualRole === 'client') {
+          logger.warn(`[Role Isolation] Blocked client ${finalUserId} from accessing worker API: ${pathname}`);
+          return null;
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('[Role Isolation] Error parsing URL or checking role', err);
+    // fail open or closed? Safe to continue if URL parsing fails, but DB error should maybe block.
+  }
+
+  return finalUserId;
 }
 
 /**

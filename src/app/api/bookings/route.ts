@@ -39,6 +39,7 @@ const updateBookingSchema = z.object({
     'started',
     'work_completed',
     'work_completed_pending_otp',
+    'awaiting_otp',
     'awaiting_item_approval',
     'item_approved',
     'otp_generated',
@@ -47,9 +48,11 @@ const updateBookingSchema = z.object({
     'payment_processing',
     'payment_verified',
     'completed',
+    'paid_completed',
     'cancelled',
     'disputed',
     'no_worker_available',
+    'in_progress',
   ]),
   reason: z.string().max(500).optional(),
   payment_status: z.enum(['pending', 'processing', 'paid', 'failed']).optional(),
@@ -424,14 +427,15 @@ export async function PATCH(request: Request) {
     }
 
     // Restrict worker specific states
-    const workerOnlyStates = ['worker_arriving', 'en_route', 'arrived', 'work_started', 'started', 'work_completed', 'work_completed_pending_otp', 'otp_generated'];
+    const workerOnlyStates = ['worker_arriving', 'en_route', 'arrived', 'work_started', 'started', 'in_progress', 'work_completed', 'work_completed_pending_otp', 'awaiting_otp', 'otp_generated'];
     if (workerOnlyStates.includes(validated.status) && existing.worker_id !== userId) {
       return createErrorResponse('Only the assigned professional can transition to this status', 403);
     }
 
-    // Intercept: Customer Confirming Completion directly
+    // Intercept: Customer Confirming Completion directly (Terminal state transition)
     if (validated.status === 'completed' && existing.client_id === userId) {
-      if (existing.status === 'work_completed_pending_otp') {
+      const isAwaitingVerification = ['work_completed_pending_otp', 'awaiting_otp', 'otp_generated'].includes(existing.status);
+      if (isAwaitingVerification) {
         const { data: confirmResult, error: confirmError } = await admin.rpc('client_confirm_completion', {
           p_booking_id: id,
           p_client_id: userId,
@@ -470,25 +474,21 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // Intercept: Worker Work Completed & OTP Generation
-    if (validated.status === 'work_completed_pending_otp') {
+    // Intercept: Worker Work Completed & OTP Generation (Unified handler for aliases)
+    if (['work_completed_pending_otp', 'awaiting_otp', 'otp_generated'].includes(validated.status)) {
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const otpHash = hashOtp(otpCode);
 
-      // Force transition if it's currently in work_started and RPC might be too restrictive
-      if (existing.status === 'work_started' || existing.status === 'started' || existing.status === 'item_approved') {
-        const { error: statusUpdateError } = await admin
+      // Force transition if it's currently in an active work state and RPC might be too restrictive
+      const activeWorkStates = ['work_started', 'started', 'in_progress', 'item_approved', 'work_completed'];
+      if (activeWorkStates.includes(existing.status)) {
+        await admin
           .from('bookings')
           .update({ 
-            status: 'work_completed_pending_otp',
+            status: validated.status,
             updated_at: new Date().toISOString()
           })
           .eq('id', id);
-        
-        if (statusUpdateError) {
-          console.error('[PATCH /api/bookings] Failed to force transition to work_completed_pending_otp:', statusUpdateError);
-          // We continue to RPC anyway as it might still work or we've already updated the status
-        }
       }
 
       const { data: genResult, error: genError } = await admin.rpc('generate_completion_otp', {
@@ -503,8 +503,7 @@ export async function PATCH(request: Request) {
       }
       
       if (!genResult?.success) {
-        // If it failed because it was already in the state, that's okay, but other errors should be returned
-        if (genResult?.error !== 'Booking is already in work completed pending state' && !genResult?.error?.includes('already')) {
+        if (!genResult?.error?.includes('already')) {
           return createErrorResponse(genResult?.error || 'Failed to generate OTP', 400);
         }
       }
@@ -543,33 +542,22 @@ export async function PATCH(request: Request) {
       return createResponse(await processBookingForResponse(updatedBooking, userId));
     }
 
-    let otpCode: string | null = null;
     const updates: Record<string, unknown> = {
       status: validated.status,
       updated_at: new Date().toISOString(),
     };
 
+    // Re-dispatch logic
     if (validated.status === 'broadcasting' && existing.status === 'no_worker_available') {
-      // Create a fresh dispatch broadcast: delete old dispatch requests (cascades to attempts)
       await admin.from('dispatch_requests').delete().eq('booking_id', id);
-
-      const { data: newDispatch, error: insErr } = await admin
-        .from('dispatch_requests')
-        .insert({
-          booking_id: id,
-          status: 'searching',
-          max_radius_km: 15.0,
-          current_radius_km: 5.0,
-        })
-        .select('*')
-        .single();
-
-      if (insErr) throw insErr;
-
-      // Reset notified worker count
+      await admin.from('dispatch_requests').insert({
+        booking_id: id,
+        status: 'searching',
+        max_radius_km: 15.0,
+        current_radius_km: 5.0,
+      });
       updates.notified_worker_count = 0;
 
-      // Trigger workers broadcast
       if (existing.latitude !== null && existing.longitude !== null) {
         await admin.rpc('notify_nearby_workers', {
           p_booking_id: id,
@@ -583,22 +571,7 @@ export async function PATCH(request: Request) {
       }
     }
 
-    if (validated.status === 'otp_generated') {
-      otpCode = Math.floor(1000 + Math.random() * 9000).toString();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes expiry
-
-      await admin.from('booking_otps').insert({
-        booking_id: id,
-        otp_hash: hashOtp(otpCode),
-        otp_encrypted: encryptOtp(otpCode),
-        expires_at: expiresAt,
-        attempts: 0,
-        used: false,
-      });
-
-      updates.otp_used = false;
-    }
-
+    // Payment status updates (Allowed for cash or via secure flow)
     if (validated.payment_status) {
       if (existing.payment_method !== 'cash') {
         return createErrorResponse('Online payment status must be updated through the secure verification channel.', 400);
@@ -631,10 +604,6 @@ export async function PATCH(request: Request) {
     if (targetUserId) {
       const notificationTitle = `Booking Status: ${validated.status.replace('_', ' ')}`;
       let notificationContent = `Your booking for ${existing.category} is now ${validated.status.replace('_', ' ')}.`;
-
-      if (validated.status === 'otp_generated' && otpCode) {
-        notificationContent = `OTP generated! Use OTP ${otpCode} to verify completion. Only share it if you are satisfied.`;
-      }
 
       await admin.from('notifications').insert({
         user_id: targetUserId,

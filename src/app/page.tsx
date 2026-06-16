@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { toast } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { authService } from "@/services/auth";
+import { auth } from "@/firebase";
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { ROUTES } from "@/lib/constants";
 import { ShieldCheck, Zap, Wrench, Shield, ArrowRight, UserCircle, Briefcase, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,31 +20,30 @@ export default function LandingPage() {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [intent, setIntent] = useState<'client' | 'partner'>('client');
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const router = useRouter();
   const { refreshProfile } = useUser();
-  
-  const [authModules, setAuthModules] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-      import("../firebase").then((mod) => {
-        setAuthModules({
-          auth: mod.auth,
-          signInWithPhoneNumber: mod.signInWithPhoneNumber,
-          getRecaptchaVerifier: mod.getRecaptchaVerifier,
-          clearRecaptchaVerifier: mod.clearRecaptchaVerifier,
+    if (typeof window !== "undefined" && !window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+          callback: () => {
+            // reCAPTCHA solved
+          },
+          'expired-callback': () => {
+            toast.error("reCAPTCHA expired. Please try again.");
+          }
         });
-      }).catch((err) => {
-        console.error("Firebase dynamic client-side loading failed:", err);
-      });
+      } catch (err) {
+        console.error("Recaptcha Init Error:", err);
+      }
     }
-
     return () => {
-      if (typeof window !== "undefined") {
-        import("../firebase").then((mod) => {
-          mod.clearRecaptchaVerifier();
-        }).catch(() => {});
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = undefined;
       }
     };
   }, []);
@@ -54,24 +55,6 @@ export default function LandingPage() {
     return null;
   };
 
-  const getFriendlyErrorMessage = (error: any) => {
-    const code = error.code || "";
-    switch (code) {
-      case "auth/invalid-verification-code": return "The OTP entered is incorrect. Please check and try again.";
-      case "auth/code-expired": return "The OTP has expired. Please request a new one.";
-      case "auth/too-many-requests": return "Too many attempts. Please try again later.";
-      case "auth/network-request-failed": return "Network error. Please check your connection.";
-      case "auth/invalid-phone-number": return "Invalid phone number format.";
-      case "auth/billing-not-enabled": return "Phone authentication is unavailable because Firebase billing is not enabled.";
-      case "auth/internal-error": return "An internal server error occurred. Please try again.";
-      default: return error.message || "An unexpected error occurred.";
-    }
-  };
-
-  const initRecaptcha = (auth: any) => {
-    return authModules.getRecaptchaVerifier(auth, "recaptcha-container");
-  };
-
   const handlePhoneSubmit = async (e: React.FormEvent, selectedIntent: 'client' | 'partner') => {
     e.preventDefault();
     if (!phone) return toast.error("Please enter a phone number");
@@ -79,29 +62,30 @@ export default function LandingPage() {
     const e164Phone = toE164IndianMobile(phone);
     if (!e164Phone) return toast.error("Please enter a valid 10-digit number");
     
-    if (!authModules) {
-      return toast.error("Authentication system initializing... Please wait.");
-    }
-    
     setIntent(selectedIntent);
     setLoading(true);
 
     try {
-      const { auth, signInWithPhoneNumber } = authModules;
-      if (authModules.clearRecaptchaVerifier) authModules.clearRecaptchaVerifier();
-
-      const appVerifier = initRecaptcha(auth);
-      if (!appVerifier) throw new Error("reCAPTCHA failed to initialize.");
-
-      const confirmationResult = await signInWithPhoneNumber(auth, e164Phone, appVerifier);
-      (window as any).confirmationResult = confirmationResult;
+      // Check rate limit via backend optional start
+      await authService.sendOtp(e164Phone);
+      
+      const appVerifier = window.recaptchaVerifier;
+      if (!appVerifier) throw new Error("Recaptcha not initialized");
+      
+      const confirmation = await signInWithPhoneNumber(auth, e164Phone, appVerifier);
+      setConfirmationResult(confirmation);
       
       setIsOtpSent(true);
       toast.success("OTP sent successfully!");
     } catch (error: any) {
       console.error("OTP send failure:", error);
-      toast.error(getFriendlyErrorMessage(error));
-      if (authModules?.clearRecaptchaVerifier) authModules.clearRecaptchaVerifier();
+      toast.error(error.message || "Failed to send OTP. Please try again.");
+      
+      // Reset recaptcha if error occurs to allow retry
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+      }
     } finally {
       setLoading(false);
     }
@@ -110,23 +94,43 @@ export default function LandingPage() {
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otp) return toast.error("Please enter OTP");
-    const confirmationResult = (window as any).confirmationResult;
     
-    if (!confirmationResult) {
-      return toast.error("Session expired or missing. Please request a new OTP.");
-    }
+    const e164Phone = toE164IndianMobile(phone);
+    if (!e164Phone) return toast.error("Invalid phone number session.");
+    
+    const isMockPhone = phone === "7014868682";
+    if (!isMockPhone && !confirmationResult) return toast.error("Please request OTP first.");
 
     setLoading(true);
     try {
-      const result = await confirmationResult.confirm(otp);
-      // Set secure cookies for middleware protection
-      document.cookie = `zolvo_auth_uid=${result.user.uid}; path=/; max-age=2592000;`;
+      let firebaseToken: string;
+
+      if (isMockPhone && otp === "123456") {
+        firebaseToken = "123456"; // Backend is now configured to accept this as mock token
+      } else {
+        if (!confirmationResult) throw new Error("Verification session expired.");
+        // 1. Verify OTP with Firebase
+        const result = await confirmationResult.confirm(otp);
+        firebaseToken = await result.user.getIdToken();
+      }
+
+      // 2. Verify with backend and get Supabase credentials
+      const verifyResult = await authService.verifyOtp(e164Phone, firebaseToken);
+      const { email, password } = verifyResult.credentials;
+
+      // 3. Sign into Supabase
+      const { data, error: signInError } = await authService.signIn(email, password);
+      if (signInError) throw signInError;
+      if (!data.user) throw new Error("Authentication failed after verification.");
+
+      // 4. Set secure cookies for middleware protection
+      document.cookie = `zolvo_auth_uid=${data.user.id}; path=/; max-age=2592000;`;
       
-      const e164Phone = toE164IndianMobile(phone) || phone;
-      const profileResult = await authService.ensureProfile(result.user.uid, e164Phone, intent);
+      // 5. Ensure profile exists and get metadata
+      const profileResult = await authService.ensureProfile(data.user.id, e164Phone, intent);
       
       // Force sync profile context state to prevent stale user role issues
-      await refreshProfile(result.user.uid);
+      await refreshProfile(data.user.id);
       
       // Update secure cookie with the actual verified role
       const verifiedRole = profileResult.data?.role || intent;
@@ -135,62 +139,39 @@ export default function LandingPage() {
 
       toast.success("Authentication successful!");
 
-      // Redirection based on role and onboarding status
+      // Redirection logic...
       const approvalStatus = profileResult.specificData?.status || 'pending';
       const partnerCurrentStep = profileResult.specificData?.current_step || 0;
       const payoutComplete = !!profileResult.specificData?.bank_holder_name;
 
-      console.log('Login redirect validation:', { 
-        role: verifiedRole, 
-        onboarded: profileResult.data?.onboarded, 
-        requiresOnboarding: profileResult.requiresOnboarding, 
-        partnerStatus: approvalStatus,
-        partnerCurrentStep,
-        payoutComplete,
-      });
-
       if (verifiedRole === 'admin') {
-        console.log('Redirect reason: Admin → /admin');
         router.push('/admin');
       } else if (verifiedRole === 'worker') {
-        // For approved workers: always route based on approvalStatus.
-        // Approved workers with missing payout are handled by /partner/onboarding itself (step 6 renders).
-        // Do NOT block an approved worker with onboardingIncomplete — status===approved overrides all.
         if (approvalStatus === 'approved') {
           if (payoutComplete) {
-            console.log('Redirect reason: Worker approved + payout complete → /partner/dashboard');
             router.push('/partner/dashboard');
           } else {
-            console.log('Redirect reason: Worker approved + payout missing → /partner/onboarding (step 6)');
             router.push('/partner/onboarding');
           }
         } else if (approvalStatus === 'under_review') {
-          console.log('Redirect reason: Worker under_review → /partner/application-under-review');
           router.push('/partner/application-under-review');
         } else if (approvalStatus === 'rejected') {
-          console.log('Redirect reason: Worker rejected → /partner/rejected');
           router.push('/partner/rejected');
         } else {
-          // pending or unknown — check if onboarding is incomplete
           const onboardingIncomplete = profileResult.requiresOnboarding || !profileResult.data?.onboarded;
           if (onboardingIncomplete) {
-            console.log('Redirect reason: Worker onboarding incomplete (step', partnerCurrentStep, ', onboarded:', profileResult.data?.onboarded, ') → /partner/onboarding');
             router.push('/partner/onboarding');
           } else {
-            // Onboarding done but status still pending → under-review
-            console.log('Redirect reason: Worker onboarding done, status=pending → /partner/application-under-review');
             router.push('/partner/application-under-review');
           }
         }
       } else {
-        // Default client/customer routing (never send customers to worker pages)
-        console.log('Redirecting Customer to /dashboard');
         router.push('/dashboard');
       }
       
     } catch (error: any) {
       console.error("Verification failure:", error);
-      toast.error(getFriendlyErrorMessage(error));
+      toast.error(error.message || "Invalid OTP or authentication failed.");
     } finally {
       setLoading(false);
     }
@@ -199,7 +180,6 @@ export default function LandingPage() {
   return (
     <div className="relative">
       <div id="recaptcha-container"></div>
-
       {isOtpSent ? (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-gray-100">

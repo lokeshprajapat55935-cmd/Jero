@@ -10,11 +10,9 @@ export function createAdminClient() {
   const key = config.env.supabase.serviceRoleKey;
   
   if (!url || !key) {
-    console.warn('Missing Supabase Service Role Key. Admin client may fail if RLS bypass is required.');
+    // Fail loudly: service role key is required for admin operations.
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY (service role key) in environment. Admin client cannot be created.');
   }
 
-  return createSupabaseClient(
-    url!,
-    key || config.env.supabase.anonKey! // Fallback to anon key to prevent crashes, though it won't have admin privileges
-  );
+  return createSupabaseClient(url!, key);
 }

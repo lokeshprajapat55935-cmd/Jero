@@ -5,12 +5,10 @@ import { useRouter } from 'next/navigation';
 import { authService } from '@/services/auth';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
-import { DEV_OTP_CODE, isMockOtpEnabled } from '@/lib/auth/otp-provider';
 import logger from '@/lib/logger';
 import type { Profile } from '@/types';
-import { auth } from '@/firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { getSupabaseClient } from '@/lib/supabase/resolveClient';
+import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 interface UserContextType {
   user: User | null;
@@ -78,7 +76,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async (forceUid?: string) => {
-    const targetUid = forceUid || user?.uid;
+    const targetUid = forceUid || user?.id;
     if (targetUid) {
       await fetchProfile(targetUid);
     }
@@ -86,140 +84,100 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let subscription: any = null;
 
-    try {
-      if (typeof window !== 'undefined') {
-        const cachedUserJson = localStorage.getItem('zolvo-cached-user');
-        const cachedProfileJson = localStorage.getItem('zolvo-cached-profile');
+    async function setupAuth() {
+      try {
+        if (typeof window !== 'undefined') {
+          const cachedUserJson = localStorage.getItem('zolvo-cached-user');
+          const cachedProfileJson = localStorage.getItem('zolvo-cached-profile');
 
-        if (cachedUserJson && cachedProfileJson) {
-          setUser(JSON.parse(cachedUserJson));
-          setProfile(JSON.parse(cachedProfileJson));
-          setLoading(false);
-        }
-      }
-    } catch (e) {
-      logger.error('Error hydrating auth cache', e);
-    }
-
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-
-    // 2. Single Source of Truth Auth Listener via Firebase
-    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
-      if (!active) return;
-      
-      if (!nextUser) {
-        // Fallback: Check if there's a Supabase user session (e.g. Admin)
-        try {
-          const supabase = await getSupabaseClient();
-          const { data: { user: supabaseUser } } = await supabase.auth.getUser();
-          
-          if (supabaseUser) {
-            // Found Supabase user, construct mock Firebase User representation
-            const mockUser = {
-              uid: supabaseUser.id,
-              email: supabaseUser.email,
-              phoneNumber: supabaseUser.phone,
-            } as User;
-            
-            setUser(mockUser);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('zolvo-cached-user', JSON.stringify({ uid: supabaseUser.id, email: supabaseUser.email }));
-              document.cookie = `zolvo_auth_uid=${supabaseUser.id}; path=/; max-age=2592000;`;
-            }
-            
-            const result = await withTimeout(authService.getProfile(supabaseUser.id));
-            const profileData = result?.data as Profile | null;
-            if (active && profileData) {
-              setProfile(profileData);
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('zolvo-cached-profile', JSON.stringify(profileData));
-              }
-              const mappedRole = profileData.role === 'worker' ? 'partner' : profileData.role;
-              document.cookie = `zolvo_role=${mappedRole}; path=/; max-age=2592000;`;
-            }
-            if (active) setLoading(false);
-            return;
+          if (cachedUserJson && cachedProfileJson) {
+            setUser(JSON.parse(cachedUserJson));
+            setProfile(JSON.parse(cachedProfileJson));
+            setLoading(false);
           }
-        } catch (err) {
-          logger.error('Failed to resolve Supabase fallback session in UserProvider', err);
         }
+      } catch (e) {
+        logger.error('Error hydrating auth cache', e);
+      }
 
-        // Skip clearing if we are using a mock test profile
+      const supabase = await getSupabaseClient();
+      
+      // 1. Check current session immediately
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && active) {
+        const supaUser = session.user;
+        setUser(supaUser);
+        await fetchProfile(supaUser.id);
+        setLoading(false);
+      } else if (!session && active) {
+        // Only clear if not in mock test mode
         const isMockTest = typeof window !== 'undefined' && 
           ((localStorage.getItem('zolvo-cached-user') || '').includes('test_') || 
            document.cookie.includes('zolvo_auth_uid=test_'));
+        
+        if (!isMockTest) {
+          setUser(null);
+          setProfile(null);
+          clearAuthCache();
+        }
+        setLoading(false);
+      }
 
-        if (isMockTest) {
-          logger.info('[UserProvider] Preserving injected mock/test auth session');
+      // 2. Supabase Auth Listener (Primary Source of Truth)
+      const { data: { subscription: sub } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+        if (!active) return;
+        logger.info(`[UserProvider] Supabase Auth Event: ${event}`);
+
+        const supabaseUser = session?.user;
+
+        if (!supabaseUser) {
+          // No session
+          const isMockTest = typeof window !== 'undefined' && 
+            ((localStorage.getItem('zolvo-cached-user') || '').includes('test_') || 
+             document.cookie.includes('zolvo_auth_uid=test_'));
+
+          if (isMockTest) {
+            logger.info('[UserProvider] Preserving injected mock/test auth session');
+            if (active) setLoading(false);
+            return;
+          }
+
+          setUser(null);
+          setProfile(null);
+          clearAuthCache();
           if (active) setLoading(false);
           return;
         }
 
-        setUser(null);
-        setProfile(null);
-        clearAuthCache();
-        if (active) setLoading(false);
-        return;
-      }
-
-      setUser(nextUser);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('zolvo-cached-user', JSON.stringify({ uid: nextUser.uid, phoneNumber: nextUser.phoneNumber }));
-        document.cookie = `zolvo_auth_uid=${nextUser.uid}; path=/; max-age=2592000;`;
-      }
-
-      const hasCorrectProfileLoaded = profileRef.current && 
-        (profileRef.current.firebase_uid === nextUser.uid || profileRef.current.id === nextUser.uid);
-
-      if (!hasCorrectProfileLoaded) {
-        if (active) setLoading(true);
-        
-        let profileData = null;
-        try {
-          const result = await withTimeout(authService.getProfile(nextUser.uid));
-          profileData = result?.data as Profile | null;
-        } catch (err) {
-          logger.error('Error in onAuthStateChange profile fetch', err);
+        setUser(supabaseUser);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('zolvo-cached-user', JSON.stringify({ id: supabaseUser.id, email: supabaseUser.email }));
+          document.cookie = `zolvo_auth_uid=${supabaseUser.id}; path=/; max-age=2592000;`;
         }
 
-        if (active) {
-          if (profileData) {
-            setProfile(profileData);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('zolvo-cached-profile', JSON.stringify(profileData));
-              const mappedRole = profileData.role === 'worker' ? 'partner' : profileData.role;
-              document.cookie = `zolvo_role=${mappedRole}; path=/; max-age=2592000;`;
-            }
-          }
-          setLoading(false);
+        const hasCorrectProfileLoaded = profileRef.current && 
+          (profileRef.current.id === supabaseUser.id || profileRef.current.firebase_uid === supabaseUser.id);
+
+        if (!hasCorrectProfileLoaded || event === 'SIGNED_IN') {
+          if (active) setLoading(true);
+          await fetchProfile(supabaseUser.id);
+          if (active) setLoading(false);
+        } else {
+          // Background refresh
+          fetchProfile(supabaseUser.id);
         }
-      } else {
-        // Background refresh
-        try {
-          const result = await withTimeout(authService.getProfile(nextUser.uid));
-          const profileData = result?.data as Profile | null;
-          if (active && profileData) {
-            setProfile(profileData);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('zolvo-cached-profile', JSON.stringify(profileData));
-              const mappedRole = profileData.role === 'worker' ? 'partner' : profileData.role;
-              document.cookie = `zolvo_role=${mappedRole}; path=/; max-age=2592000;`;
-            }
-          }
-        } catch (err) {
-          logger.error('Background profile validation failed', err);
-        }
-        if (active) setLoading(false);
-      }
-    });
+      });
+      
+      subscription = sub;
+    }
+
+    setupAuth();
 
     return () => {
       active = false;
-      unsubscribe();
+      if (subscription) subscription.unsubscribe();
     };
   }, [fetchProfile, clearAuthCache]);
 
@@ -229,31 +187,40 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setProfile(null);
     
-    // 2. Clear Firebase Session
-    try {
-      if (auth) await auth.signOut();
-    } catch (e) {
-      logger.error('Error signing out of Firebase', e);
-    }
-
-    // 3. Clear Supabase & Next.js Cookies Session
+    // 2. Clear Supabase & Next.js Cookies Session
     try {
       await authService.signOut();
+      const supabase = await getSupabaseClient();
+      await supabase.auth.signOut();
     } catch (e) {
-      logger.error('Error signing out of Supabase API', e);
+      logger.error('Error signing out', e);
     }
   }, [clearAuthCache]);
 
   const sendPhoneOtp = useCallback(async (phone: string) => {
     setIsLoading(true);
-    // ... not actively used since page.tsx uses Firebase directly, but keeping for compatibility
-    setIsLoading(false);
-  }, []);
+    try {
+      await authService.sendOtp(phone);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   const verifyPhoneOtp = useCallback(async (phone: string, token: string) => {
     setIsLoading(true);
-    setIsLoading(false);
-  }, []);
+    try {
+      const result = await authService.verifyOtp(phone, token);
+      const { email, password } = result.credentials;
+      const { error } = await authService.signIn(email, password);
+      if (error) throw error;
+    } catch (err: any) {
+      toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   const logout = useCallback(async () => {
     await signOut();

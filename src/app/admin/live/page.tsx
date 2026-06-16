@@ -282,7 +282,7 @@ export default function LiveOpsPage() {
   const pipeline = {
     searching: filteredBookings.filter((b) => ['pending', 'broadcasting'].includes(b.status)),
     assigned: filteredBookings.filter((b) => ['accepted', 'worker_arriving'].includes(b.status)),
-    inProgress: filteredBookings.filter((b) => ['work_started', 'started', 'awaiting_item_approval', 'item_approved', 'otp_generated', 'otp_verified', 'awaiting_payment'].includes(b.status)),
+    inProgress: filteredBookings.filter((b) => ['work_started', 'started', 'awaiting_item_approval', 'item_approved', 'work_completed_pending_otp', 'otp_generated', 'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified'].includes(b.status)),
     completed: filteredBookings.filter((b) => ['completed', 'paid_completed'].includes(b.status)),
     cancelled: filteredBookings.filter((b) => b.status === 'cancelled'),
   };

@@ -39,7 +39,12 @@ async function run() {
   }
 
   const result = await response.json();
-  console.log('Success:', result);
+  console.log('Full RPC result:', JSON.stringify(result, null, 2));
+  if (result.success && Array.isArray(result.data)) {
+    console.log('Success (rows):', JSON.stringify(result.data, null, 2));
+  } else {
+    console.log('Success:', result);
+  }
 }
 
 run().catch(console.error);

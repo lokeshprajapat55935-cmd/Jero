@@ -157,7 +157,7 @@ export function SecurityPanel() {
               </div>
               <div>
                 <p className="font-semibold text-gray-900">{t('security.phoneVerification')}</p>
-                <p className="text-sm text-gray-500">{user?.phoneNumber || 'Not provided'}</p>
+                <p className="text-sm text-gray-500">{user?.phone || 'Not provided'}</p>
               </div>
             </div>
             {profile?.phone_verified ? (

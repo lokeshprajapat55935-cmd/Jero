@@ -73,7 +73,7 @@ export async function updateSession(request: NextRequest) {
   if (!user) {
     if (protectedRoute || isAdminRoute) {
       return (
-        redirectTo(request, '/auth/login', { next: pathname }) ?? supabaseResponse
+        redirectTo(request, '/', { next: pathname }) ?? supabaseResponse
       );
     }
     return supabaseResponse;
