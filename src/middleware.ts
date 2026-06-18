@@ -158,12 +158,20 @@ export async function middleware(request: NextRequest) {
   if (hasAuthCookie && roleCookie) {
     // A Client trying to access Partner routes
     if (roleCookie === 'client' && isPartnerRoute) {
-      return applyCookies(NextResponse.redirect(new URL('/dashboard', request.url)));
+      const redirectResponse = NextResponse.redirect(new URL('/', request.url));
+      redirectResponse.cookies.delete('zolvo_customer_uid');
+      redirectResponse.cookies.delete('zolvo_customer_role');
+      redirectResponse.cookies.delete('zolvo_customer_session');
+      return applyCookies(redirectResponse);
     }
     
     // A Partner trying to access Client routes
     if (roleCookie === 'partner' && isClientRoute) {
-      return applyCookies(NextResponse.redirect(new URL('/partner/dashboard', request.url)));
+      const redirectResponse = NextResponse.redirect(new URL('/', request.url));
+      redirectResponse.cookies.delete('zolvo_worker_uid');
+      redirectResponse.cookies.delete('zolvo_worker_role');
+      redirectResponse.cookies.delete('zolvo_worker_session');
+      return applyCookies(redirectResponse);
     }
   }
   

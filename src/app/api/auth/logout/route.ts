@@ -43,9 +43,7 @@ export async function POST(request: NextRequest) {
   await supabase.auth.signOut();
 
   // Explicitly clear isolated Next.js custom auth/role cookies
-  supabaseResponse.cookies.delete('zolvo_auth_uid'); // Legacy
-  supabaseResponse.cookies.delete('zolvo_role');     // Legacy
-  
+
   if (appType === 'worker') {
     supabaseResponse.cookies.delete('zolvo_worker_uid');
     supabaseResponse.cookies.delete('zolvo_worker_role');

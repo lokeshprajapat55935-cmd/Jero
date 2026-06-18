@@ -16,8 +16,6 @@ export function SettingsPanel({ settings, onUpdate }: SettingsPanelProps) {
   const handleLogout = async () => {
     try {
       await authService.signOut();
-      document.cookie = "zolvo_auth_uid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "zolvo_role=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       router.push("/");
     } catch (e: any) {
       toast.error(e.message || "Logout failed");

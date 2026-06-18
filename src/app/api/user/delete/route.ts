@@ -23,8 +23,6 @@ export async function DELETE(request: NextRequest) {
 
     // 2. Clear authentication cookies
     const cookieStore = await cookies();
-    cookieStore.delete('zolvo_auth_uid');
-    cookieStore.delete('zolvo_role');
 
     return createResponse({ success: true, message: 'Account deleted successfully' });
   } catch (error) {

@@ -1,0 +1,9 @@
+{
+  "category": "electrician",
+  "description": "Fan repair testing",
+  "location_address": "Bhilwara City Center",
+  "latitude": 25.3413,
+  "longitude": 74.6366,
+  "payment_method": "cash",
+  "booking_type": "asap"
+}

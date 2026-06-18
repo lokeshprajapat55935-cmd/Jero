@@ -167,6 +167,17 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
     if (action === 'start') {
+      // Resend Cooldown (1 request per 30 seconds)
+      const { data: resendAllowed } = await admin.rpc('check_rate_limit', {
+        p_key: `rate:otp:start:cooldown:${phone}`,
+        p_max_hits: 1,
+        p_window_seconds: 30,
+      });
+
+      if (!resendAllowed) {
+        return createErrorResponse('Please wait 30 seconds before requesting another OTP.', 429);
+      }
+
       // Rate Limiting (Server side check before client sends SMS, optional but good for security)
       const { data: ipAllowed } = await admin.rpc('check_rate_limit', {
         p_key: `rate:otp:start:ip:${ip}`,
@@ -188,6 +199,30 @@ export async function POST(request: NextRequest) {
     if (action === 'verify') {
       const token = String(body.token || '').trim();
       if (!token) return createErrorResponse('Firebase ID token is required.', 400);
+
+      // Verify Attempt Rate Limit (max 5 hits per 5 minutes)
+      const { data: verifyAllowed } = await admin.rpc('check_rate_limit', {
+        p_key: `rate:otp:verify:ip:${ip}`,
+        p_max_hits: 5,
+        p_window_seconds: 300,
+      });
+
+      if (!verifyAllowed) {
+        return createErrorResponse('Too many verify attempts. Please try again later.', 429);
+      }
+
+      // Replay Protection: Check if this token has already been used
+      const { data: existingEvent } = await admin
+        .from('auth_audit_events')
+        .select('id')
+        .eq('metadata->>token', token)
+        .eq('event_type', 'login_success')
+        .maybeSingle();
+
+      if (existingEvent) {
+        logger.warn(`OTP Replay Attempt: token already used for phone ${phone}`);
+        return createErrorResponse('OTP has already been used.', 401);
+      }
 
       const devOtpCode = config.env.otp.devCode || '123456';
       const isMockToken = token === devOtpCode && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE);
@@ -221,6 +256,22 @@ export async function POST(request: NextRequest) {
               logger.warn(`Phone mismatch. Requested: ${phone}, Verified: ${verifiedPhone}`);
               return createErrorResponse('Phone number mismatch during verification.', 400);
           }
+
+          // OTP Expiry: Check if auth_time is older than 5 minutes
+          // Note: Identity Toolkit doesn't always return auth_time at the top level for lookup.
+          // However, we can decode the JWT directly to read auth_time.
+          try {
+            const { decodeJwt } = await import('jose');
+            const decodedToken = decodeJwt(token);
+            if (decodedToken.auth_time) {
+              const ageInSeconds = (Date.now() / 1000) - Number(decodedToken.auth_time);
+              if (ageInSeconds > 300) { // 5 minutes
+                return createErrorResponse('OTP expired. Please request a new one.', 401);
+              }
+            }
+          } catch (jwtErr) {
+            logger.warn('Failed to parse JWT for expiry check:', jwtErr);
+          }
         } catch (err) {
           logger.error('Error calling Firebase Identity Toolkit:', err);
           return createErrorResponse('Authentication service unavailable.', 500);
@@ -243,7 +294,7 @@ export async function POST(request: NextRequest) {
         event_type: 'login_success',
         ip_address: ip,
         user_agent: userAgent,
-        metadata: { phone, provider: 'firebase' },
+        metadata: { phone, provider: 'firebase', token },
       });
 
       return createResponse({

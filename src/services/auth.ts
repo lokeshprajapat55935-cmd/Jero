@@ -47,6 +47,10 @@ export const authService = {
 
   async signOut() {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
       const response = await fetch('/api/auth/logout', { method: 'POST' });
       const payload = await response.json();
       return { error: payload.success ? null : new Error(payload.error || 'Failed to logout') };

@@ -31,10 +31,10 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
   if (!resolvedId) {
     try {
       const cookieHeader = request.headers.get('cookie') || '';
-      const match = cookieHeader.match(/(?:^|;\s*)zolvo_auth_uid=([^;]+)/);
-      if (match && match[1]) {
-        resolvedId = decodeURIComponent(match[1]);
-        logger.info(`[getAuthUserId] found zolvo_auth_uid from raw cookie: "${resolvedId}"`);
+      const match = cookieHeader.match(/(?:^|;\s*)(zolvo_worker_uid|zolvo_customer_uid)=([^;]+)/);
+      if (match && match[2]) {
+        resolvedId = decodeURIComponent(match[2]);
+        logger.info(`[getAuthUserId] found ${match[1]} from raw cookie: "${resolvedId}"`);
       }
     } catch (e) {
       logger.error('[getAuthUserId] cookie parse error:', e);
@@ -46,10 +46,11 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
     try {
       const reqWithCookies = request as any;
       if (typeof reqWithCookies.cookies?.get === 'function') {
-        const cookieUid = reqWithCookies.cookies.get('zolvo_auth_uid')?.value;
+        const cookieUid = reqWithCookies.cookies.get('zolvo_worker_uid')?.value || 
+                          reqWithCookies.cookies.get('zolvo_customer_uid')?.value;
         if (cookieUid) {
           resolvedId = cookieUid;
-          logger.info(`[getAuthUserId] found zolvo_auth_uid from request.cookies: "${resolvedId}"`);
+          logger.info(`[getAuthUserId] found user from request.cookies: "${resolvedId}"`);
         }
       }
     } catch (e) {

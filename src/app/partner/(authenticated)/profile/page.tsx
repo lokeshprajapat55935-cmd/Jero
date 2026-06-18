@@ -46,10 +46,6 @@ export default function PartnerProfilePage() {
         localStorage.removeItem("zolvo-cached-profile");
       }
 
-      // Clear cookies
-      document.cookie = "zolvo_auth_uid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "zolvo_role=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
       // Use UserProvider logout — clears Firebase, Supabase, and redirects
       await logout();
       console.log("[Profile] Logout successful");

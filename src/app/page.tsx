@@ -124,7 +124,8 @@ export default function LandingPage() {
       if (!data.user) throw new Error("Authentication failed after verification.");
 
       // 4. Set secure cookies for middleware protection
-      document.cookie = `zolvo_auth_uid=${data.user.id}; path=/; max-age=2592000;`;
+      const uidCookieName = intent === 'partner' ? 'zolvo_worker_uid' : 'zolvo_customer_uid';
+      document.cookie = `${uidCookieName}=${data.user.id}; path=/; max-age=2592000;`;
       
       // 5. Ensure profile exists and get metadata
       const profileResult = await authService.ensureProfile(data.user.id, e164Phone, intent);
@@ -135,7 +136,8 @@ export default function LandingPage() {
       // Update secure cookie with the actual verified role
       const verifiedRole = profileResult.data?.role || intent;
       const mappedRole = verifiedRole === 'worker' ? 'partner' : verifiedRole;
-      document.cookie = `zolvo_role=${mappedRole}; path=/; max-age=2592000;`;
+      const roleCookieName = verifiedRole === 'worker' ? 'zolvo_worker_role' : 'zolvo_customer_role';
+      document.cookie = `${roleCookieName}=${mappedRole}; path=/; max-age=2592000;`;
 
       toast.success("Authentication successful!");
 
