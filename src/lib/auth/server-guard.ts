@@ -2,11 +2,17 @@ import { createClient } from '@/lib/supabase/supabase-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ApiError } from '@/lib/api-error';
 import { cookies } from 'next/headers';
+import { getAdminSession } from '@/lib/admin/auth';
 
 async function getUserIdFromCookies() {
   try {
     const cookieStore = await cookies();
-    const cookieUid = cookieStore.get('zolvo_auth_uid')?.value;
+    const { headers } = await import('next/headers');
+    const headersList = await headers();
+    const appType = headersList.get('x-zolvo-app-type') || 'customer';
+    const cookieName = appType === 'worker' ? 'zolvo_worker_uid' : 'zolvo_customer_uid';
+
+    const cookieUid = cookieStore.get(cookieName)?.value;
     if (cookieUid) {
       // Resolve Firebase UID to profile UUID if it's not a UUID
       const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cookieUid);
@@ -38,6 +44,10 @@ async function getUserIdFromCookies() {
  */
 export async function requireWorker() {
   const supabase = await createClient();
+  
+  // 1. Check isolated admin session (Admins can act as workers in some contexts, but usually they shouldn't)
+  // For now, we keep it strict: only real workers or Supabase Auth admins.
+  
   let userId = await getUserIdFromCookies();
   let user: any = userId ? { id: userId } : null;
 
@@ -101,9 +111,31 @@ export async function requireClient() {
 /**
  * Validates that the current request has a valid user session,
  * and that the user's role is 'admin'.
+ * Supports isolated admin sessions and standard Supabase Auth.
  */
 export async function requireAdmin() {
   const supabase = await createClient();
+  
+  // 1. Check isolated admin session first
+  const adminSession = await getAdminSession();
+  if (adminSession && adminSession.role === 'admin') {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, admin_role')
+      .eq('id', adminSession.admin_id)
+      .maybeSingle();
+
+    if (profile?.role === 'admin') {
+      return { 
+        user: { id: adminSession.admin_id }, 
+        profile, 
+        admin: createAdminClient(),
+        adminRole: profile.admin_role || 'super_admin'
+      };
+    }
+  }
+
+  // 2. Fallback to standard session
   let userId = await getUserIdFromCookies();
   let user: any = userId ? { id: userId } : null;
 
@@ -117,7 +149,7 @@ export async function requireAdmin() {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, admin_role')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -125,5 +157,10 @@ export async function requireAdmin() {
     throw new ApiError(403, 'Forbidden: Admin access required');
   }
 
-  return { user, profile, admin: createAdminClient() };
+  return { 
+    user, 
+    profile, 
+    admin: createAdminClient(),
+    adminRole: profile.admin_role || 'super_admin'
+  };
 }

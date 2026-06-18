@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AdminRole } from '@/types';
+import { getAdminSession } from '@/lib/admin/auth';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export interface AdminGateResult {
   ok: true;
@@ -14,43 +16,35 @@ export interface AdminGateDenied {
 }
 
 /**
- * Require admin access. Optionally enforce a specific sub-role.
- * All existing admins default to 'super_admin' via DB migration.
- * 'super_admin' passes all sub-role checks.
+ * Require strict super_admin access via isolated admin session.
+ * Standard Supabase Auth is ignored to enforce complete isolation.
  */
 export async function requireAdmin(
-  supabase: SupabaseClient,
-  requiredSubRole?: AdminRole
+  supabase?: SupabaseClient
 ): Promise<AdminGateResult | AdminGateDenied> {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  try {
+    const adminSession = await getAdminSession();
+    
+    if (adminSession && adminSession.role === 'admin' && adminSession.admin_role === 'super_admin') {
+      const adminDb = createAdminClient();
+      
+      // Validate session against database for real-time revocation
+      const { data: profile } = await adminDb
+        .from('profiles')
+        .select('role, admin_role')
+        .eq('id', adminSession.admin_id)
+        .maybeSingle();
 
-  if (authError || !user) {
+      if (profile?.role === 'admin' && profile?.admin_role === 'super_admin') {
+        return { ok: true, user: { id: adminSession.admin_id }, adminRole: 'super_admin' };
+      }
+      
+      console.log('requireAdmin failed. profile:', profile);
+    }
+    
+    return { ok: false, status: 403, message: 'Forbidden: Strict Super Admin access required' };
+  } catch (error) {
+    console.error('[requireAdmin] Isolated session check failed:', error);
     return { ok: false, status: 401, message: 'Unauthorized' };
   }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, admin_role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (profile?.role !== 'admin') {
-    return { ok: false, status: 403, message: 'Admin access required' };
-  }
-
-  const adminRole = (profile.admin_role as AdminRole | null) ?? 'super_admin';
-
-  // super_admin passes all sub-role checks
-  if (requiredSubRole && adminRole !== 'super_admin' && adminRole !== requiredSubRole) {
-    return {
-      ok: false,
-      status: 403,
-      message: `This action requires the '${requiredSubRole}' role. Your current admin role is '${adminRole}'.`,
-    };
-  }
-
-  return { ok: true, user, adminRole };
 }

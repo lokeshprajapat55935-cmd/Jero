@@ -31,13 +31,13 @@ export default function PrivacyPolicyPage() {
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-gray-900">Zolvo Data Protection Policy</h2>
+              <h2 className="text-lg font-black text-gray-900">Jero Data Protection Policy</h2>
               <p className="text-xs text-gray-500">Effective Date: June 7, 2026 | Version 2.4</p>
             </div>
           </div>
 
           <p className="text-xs text-gray-500">
-            Zolvo Technologies (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is committed to protecting your privacy. This Privacy Policy details how we collect, process, store, and share your personal data when you use the Zolvo mobile application, web application, and related local home service booking features (collectively, the &quot;Platform&quot;) in Bhilwara, Rajasthan, India. This policy is aligned with the Indian Digital Personal Data Protection (DPDP) Act, 2023, and Google Play Store developer policies.
+            Jero Technologies (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is committed to protecting your privacy. This Privacy Policy details how we collect, process, store, and share your personal data when you use the Jero mobile application, web application, and related local home service booking features (collectively, the &quot;Platform&quot;) in Bhilwara, Rajasthan, India. This policy is aligned with the Indian Digital Personal Data Protection (DPDP) Act, 2023, and Google Play Store developer policies.
           </p>
 
           <section className="space-y-2">
@@ -61,7 +61,7 @@ export default function PrivacyPolicyPage() {
               <div>
                 <p className="font-bold text-blue-900 mb-1">Android Background Location Disclosure</p>
                 <p className="text-blue-700 leading-normal mb-2">
-                  Zolvo collects precise location data to support:
+                  Jero collects precise location data to support:
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-blue-700 leading-normal">
                   <li>Matching customer service requests with nearby verified professionals within active municipal zones in Bhilwara.</li>
@@ -122,7 +122,7 @@ export default function PrivacyPolicyPage() {
               If you have any questions, concerns, or data privacy complaints, or if you wish to exercise your rights under the DPDP Act, you may contact our designated Grievance Officer:
             </p>
             <div className="bg-gray-50 border border-gray-150 rounded-lg p-3 text-xs">
-              <p><strong>Grievance & Privacy Officer:</strong> Zolvo Support Desk</p>
+              <p><strong>Grievance & Privacy Officer:</strong> Jero Support Desk</p>
               <p><strong>Phone:</strong> 7014868682</p>
               <p><strong>Email:</strong> privacy@zolvo.in</p>
               <p><strong>Address:</strong> Bhilwara, Rajasthan, 311001</p>
@@ -130,7 +130,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <div className="border-t border-gray-100 pt-4 flex items-center justify-between text-xs text-gray-400 font-medium">
-            <p>© 2026 Zolvo Technologies. All rights reserved.</p>
+            <p>© 2026 Jero Technologies. All rights reserved.</p>
             <button onClick={() => router.back()} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
               Close Policy
             </button>

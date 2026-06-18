@@ -183,7 +183,7 @@ export class NotificationManager {
     return this.sendNotification({
       userId,
       title: 'Service Completed',
-      message: 'Your service booking has been marked completed. Thank you for choosing Zolvo!',
+      message: 'Your service booking has been marked completed. Thank you for choosing Jero!',
       type: 'booking',
       role: 'client',
       linkUrl: `/booking/${bookingId}`,
@@ -256,7 +256,7 @@ export class NotificationManager {
     return this.sendNotification({
       userId,
       title: 'Payment Credited',
-      message: `We recorded a credit of ₹${amount} in your Zolvo partner wallet.`,
+      message: `We recorded a credit of ₹${amount} in your Jero partner wallet.`,
       type: 'payment',
       role: 'worker',
       linkUrl: '/worker/earnings',
@@ -268,7 +268,7 @@ export class NotificationManager {
     return this.sendNotification({
       userId,
       title: 'Account Approved!',
-      message: 'Congratulations! Your partner account has been approved by Zolvo admin. You can now toggle online.',
+      message: 'Congratulations! Your partner account has been approved by Jero admin. You can now toggle online.',
       type: 'system',
       role: 'worker',
       linkUrl: '/worker/dashboard',

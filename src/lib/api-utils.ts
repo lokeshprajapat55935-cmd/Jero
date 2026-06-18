@@ -3,25 +3,42 @@ import type { NextRequest } from 'next/server';
 import logger from '@/lib/logger';
 import { config } from '@/config';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyAdminSession, ADMIN_COOKIE_NAME } from '@/lib/admin/auth';
 
 /**
- * Resolves User ID from either Supabase Auth (primary) or Firebase/Custom cookie (fallback)
+ * Resolves User ID from either Supabase Auth (primary), Firebase/Custom cookie (fallback), or Admin Session JWT
  */
 export async function getAuthUserId(request: NextRequest | Request, supabase: any): Promise<string | null> {
   let resolvedId: string | null = null;
 
-  // Check custom/Firebase auth cookie fallback first (avoids slow/unresponsive remote Supabase auth requests)
-  // We read from raw Cookie header since `request` may be a plain Request (not NextRequest)
+  // 1. Check for isolated admin session JWT (highest priority for admin-related flows)
   try {
     const cookieHeader = request.headers.get('cookie') || '';
-    logger.info(`[getAuthUserId] raw cookie header: "${cookieHeader}"`);
-    const match = cookieHeader.match(/(?:^|;\s*)zolvo_auth_uid=([^;]+)/);
-    if (match && match[1]) {
-      resolvedId = decodeURIComponent(match[1]);
-      logger.info(`[getAuthUserId] found zolvo_auth_uid from raw cookie: "${resolvedId}"`);
+    const adminMatch = cookieHeader.match(new RegExp(`(?:^|;\\s*)${ADMIN_COOKIE_NAME}=([^;]+)`));
+    if (adminMatch && adminMatch[1]) {
+      const token = decodeURIComponent(adminMatch[1]);
+      const payload = await verifyAdminSession(token);
+      if (payload?.admin_id) {
+        resolvedId = payload.admin_id;
+        logger.info(`[getAuthUserId] found admin_id from admin session JWT: "${resolvedId}"`);
+      }
     }
   } catch (e) {
-    logger.error('[getAuthUserId] cookie parse error:', e);
+    logger.error('[getAuthUserId] admin session parse error:', e);
+  }
+
+  // 2. Check custom/Firebase auth cookie fallback
+  if (!resolvedId) {
+    try {
+      const cookieHeader = request.headers.get('cookie') || '';
+      const match = cookieHeader.match(/(?:^|;\s*)zolvo_auth_uid=([^;]+)/);
+      if (match && match[1]) {
+        resolvedId = decodeURIComponent(match[1]);
+        logger.info(`[getAuthUserId] found zolvo_auth_uid from raw cookie: "${resolvedId}"`);
+      }
+    } catch (e) {
+      logger.error('[getAuthUserId] cookie parse error:', e);
+    }
   }
 
   // Fallback: try request.cookies if it exists (NextRequest)

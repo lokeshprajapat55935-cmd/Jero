@@ -34,6 +34,12 @@ export function AccountInfo({ profile }: AccountInfoProps) {
         </div>
         {profile.kyc_status === 'verified' ? (
           <span className="text-xs font-black text-green-600 bg-green-50 px-2 py-1 rounded-md">Verified</span>
+        ) : profile.kyc_status === 'pending' ? (
+          <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Pending</span>
+        ) : profile.kyc_status === 'rejected' ? (
+          <span className="text-xs font-black text-red-600 bg-red-50 px-2 py-1 rounded-md flex items-center gap-1">
+            <AlertTriangle size={12} /> Rejected
+          </span>
         ) : (
           <span className="text-xs font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1">
             <AlertTriangle size={12} /> Action Required

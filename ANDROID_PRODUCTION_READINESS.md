@@ -1,6 +1,6 @@
-# Zolvo Platform - Android Production Readiness & Play Store Launch Guide
+# Jero Platform - Android Production Readiness & Play Store Launch Guide
 
-This manual contains details for configuring app icons, splash screens, deep linking, app versioning, and release signing keys to launch the **Zolvo Pro** and **Zolvo Client** apps on the Google Play Store.
+This manual contains details for configuring app icons, splash screens, deep linking, app versioning, and release signing keys to launch the **Jero Pro** and **Jero Client** apps on the Google Play Store.
 
 ---
 

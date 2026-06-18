@@ -2,8 +2,8 @@ import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Zolvo - Local Services Marketplace",
-    short_name: "Zolvo",
+    name: "Jero - Local Services Marketplace",
+    short_name: "Jero",
     description: "Find and book trusted local professionals (electricians and plumbers) in Bhilwara.",
     start_url: "/",
     display: "standalone",

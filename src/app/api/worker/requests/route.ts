@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/supabase-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createResponse, createErrorResponse, handleApiError, getAuthUserId } from '@/lib/api-utils';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/worker/requests
  *

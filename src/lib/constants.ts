@@ -2,7 +2,7 @@
  * Global Constants
  */
 
-export const APP_NAME = 'Zolvo';
+export const APP_NAME = 'Jero';
 
 // Location Configuration
 export const ACTIVE_CITY = {
@@ -52,7 +52,7 @@ export const CURRENCY_SYMBOL = '₹';
 
 // SEO Constants
 export const SEO_METADATA = {
-  title: `Zolvo - Professional Services in ${ACTIVE_CITY.name}`,
+  title: `Jero - Professional Services in ${ACTIVE_CITY.name}`,
   description: `Find trusted electricians and plumbers in ${ACTIVE_CITY.name}, ${ACTIVE_CITY.state}. Book verified professionals for home services.`,
   keywords: [
     `electrician in ${ACTIVE_CITY.name}`,

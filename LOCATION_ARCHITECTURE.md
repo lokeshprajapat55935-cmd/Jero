@@ -2,7 +2,7 @@
 
 ## Overview
 
-Zolvo is currently configured to operate as a single-city platform serving **Bhilwara, Rajasthan, India**. The architecture is designed to be **scalable and future-proof** for expansion to other cities.
+Jero is currently configured to operate as a single-city platform serving **Bhilwara, Rajasthan, India**. The architecture is designed to be **scalable and future-proof** for expansion to other cities.
 
 ## Current Configuration
 

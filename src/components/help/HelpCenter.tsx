@@ -5,9 +5,9 @@ import { HelpCircle, Search, ChevronRight } from 'lucide-react';
 
 const FAQs = [
   { q: "How do I book a service professional?", a: "Search for electrical or plumbing services on the home page, select a verified professional, and choose your preferred time slot." },
-  { q: "What payment methods are supported?", a: "Zolvo operates under a Cash-On-Delivery or Direct UPI model. You pay the professional directly after the job is completed to your satisfaction." },
+  { q: "What payment methods are supported?", a: "Jero operates under a Cash-On-Delivery or Direct UPI model. You pay the professional directly after the job is completed to your satisfaction." },
   { q: "Are the professionals background checked?", a: "Yes, every service provider undergoes comprehensive identity document verification, database background screening, and skill testing before approval." },
-  { q: "What is the active service area for Zolvo?", a: "We currently operate exclusively within Bhilwara, Rajasthan. All bookings are geofenced to active municipal service zones." },
+  { q: "What is the active service area for Jero?", a: "We currently operate exclusively within Bhilwara, Rajasthan. All bookings are geofenced to active municipal service zones." },
   { q: "What happens if a professional cancels or doesn't show up?", a: "If a provider cancels, the booking goes back into the dispatch pool to automatically find a replacement. You can also contact support for fast re-assignment." },
   { q: "How is my location data handled?", a: "We only use location details to map active bookings, compute accurate provider arrivals, and verify geofenced boundaries. Your location is never shared with third-party advertisers." },
   { q: "How do I delete my account or personal data?", a: "Go to Profile -> Privacy & Security and choose 'Delete Account' or 'Request Data Deletion'. Formal deletion requests are reviewed and processed within 48 hours." },

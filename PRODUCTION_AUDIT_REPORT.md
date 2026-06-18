@@ -1,6 +1,6 @@
-# Zolvo Platform - Final Launch Production Audit Report
+# Jero Platform - Final Launch Production Audit Report
 
-This report presents the final production readiness audit of the **Zolvo** local marketplace platform. Each operational dimension has been verified against Google Play Store policies and enterprise production standards.
+This report presents the final production readiness audit of the **Jero** local marketplace platform. Each operational dimension has been verified against Google Play Store policies and enterprise production standards.
 
 ---
 
@@ -54,4 +54,4 @@ This report presents the final production readiness audit of the **Zolvo** local
 
 ## 🚀 LAUNCH RECOMMENDATION: APPROVED FOR PRODUCTION 🚀
 
-The Zolvo marketplace platform exhibits **zero remaining blockers** and has met all security, performance, and regulatory requirements. It is highly recommended to proceed with the release window deployment and Android App Bundle upload.
+The Jero marketplace platform exhibits **zero remaining blockers** and has met all security, performance, and regulatory requirements. It is highly recommended to proceed with the release window deployment and Android App Bundle upload.

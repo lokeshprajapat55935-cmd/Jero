@@ -128,7 +128,7 @@ const OTPLoginScreen = ({ navigation }) => {
       >
         <div id="recaptcha-container"></div>
         <View style={styles.header}>
-          <Text style={styles.title}>Welcome to Zolvo</Text>
+          <Text style={styles.title}>Welcome to Jero</Text>
           <Text style={styles.subtitle}>
             {step === 'SEND' 
               ? 'Enter your phone number to continue' 
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resendText: {
-    color: '#14826f', // Zolvo theme color
+    color: '#14826f', // Jero theme color
     fontWeight: '600',
     fontSize: 14,
   },
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     color: '#999999',
   },
   button: {
-    backgroundColor: '#14826f', // Zolvo theme color
+    backgroundColor: '#14826f', // Jero theme color
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',

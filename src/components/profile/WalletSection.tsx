@@ -40,7 +40,7 @@ export function WalletSection({ wallet, isLoading }: WalletSectionProps) {
               <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 font-medium mb-0.5">Zolvo Cash</p>
+              <p className="text-xs text-gray-500 font-medium mb-0.5">Jero Cash</p>
               <p className="text-lg font-bold text-gray-900 leading-none">
                 {currency}{balance.toFixed(2)}
               </p>

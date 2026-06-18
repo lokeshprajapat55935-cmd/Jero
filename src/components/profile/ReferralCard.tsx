@@ -20,7 +20,7 @@ export function ReferralCard({ profile }: ReferralCardProps) {
   };
 
   const handleShare = () => {
-    const text = `Join Zolvo using my referral code ${profile.referral_code} and get a discount on your first booking!`;
+    const text = `Join Jero using my referral code ${profile.referral_code} and get a discount on your first booking!`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -39,7 +39,7 @@ export function ReferralCard({ profile }: ReferralCardProps) {
           <h3 className="text-white font-black text-lg">Refer & Earn</h3>
         </div>
         <p className="text-blue-100 text-xs font-medium max-w-[200px]">
-          Invite your friends to Zolvo and earn ₹100 in your wallet for every successful booking.
+          Invite your friends to Jero and earn ₹100 in your wallet for every successful booking.
         </p>
       </div>
 

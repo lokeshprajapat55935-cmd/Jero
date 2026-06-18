@@ -3,6 +3,8 @@ import { withApiErrorHandler } from '@/lib/api-error';
 import { requireWorker } from '@/lib/auth/server-guard';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 const updateAvailabilitySchema = z.object({
   status: z.enum(['offline', 'online', 'busy', 'unavailable']).optional(),
   latitude: z.number().nullable().optional(),

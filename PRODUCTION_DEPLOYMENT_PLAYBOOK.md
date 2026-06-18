@@ -1,6 +1,6 @@
-# Zolvo Platform - Production Deployment Playbook & Launch Readiness Guide
+# Jero Platform - Production Deployment Playbook & Launch Readiness Guide
 
-This playbook contains environment setups, migration orders, verification checks, rollback protocols, and launch checklists to guide the deployment of the **Zolvo** platform to production.
+This playbook contains environment setups, migration orders, verification checks, rollback protocols, and launch checklists to guide the deployment of the **Jero** platform to production.
 
 ---
 
@@ -27,7 +27,7 @@ Set these variables inside your hosting platform's environment settings:
 Navigate to **Settings > Provider > Phone** on the Supabase project dashboard:
 1. **Enable Phone Provider**: Turn ON Phone Auth.
 2. **SMS Gateway Credentials**: Connect your SMS gateway (e.g. Twilio, MessageBird) with your verified Sender ID, Auth Token, and SID credentials.
-3. **OTP SMS Template**: Configure OTP message body (e.g. `Your Zolvo verification code is {{ .Code }}`).
+3. **OTP SMS Template**: Configure OTP message body (e.g. `Your Jero verification code is {{ .Code }}`).
 4. **Rate Limits**: Limit sign-in requests (e.g., maximum 5 requests per 10 minutes per IP/Phone) to prevent SMS billing abuse.
 
 ---

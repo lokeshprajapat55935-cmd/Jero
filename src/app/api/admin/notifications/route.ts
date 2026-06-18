@@ -1,140 +1,98 @@
-import { createClient } from '@/lib/supabase/supabase-server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAdmin } from '@/lib/auth/admin';
-import { createResponse, createErrorResponse, handleApiError } from '@/lib/api-utils';
-import { z } from 'zod';
+import { getAdminSession } from '@/lib/admin/auth';
+import { fcmService } from '@/lib/notifications/fcm';
 
-const broadcastSchema = z.object({
-  target_type: z.enum(['all_workers', 'all_clients', 'all_users', 'city', 'specific_user']),
-  target_city_id: z.string().uuid().optional(),
-  target_user_id: z.string().uuid().optional(),
-  title: z.string().min(3).max(100),
-  message: z.string().min(5).max(500),
-  notification_type: z.enum(['info', 'warning', 'announcement', 'urgent']).default('info'),
-});
-
-export async function GET(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const gate = await requireAdmin(supabase);
-    if (!gate.ok) return createErrorResponse(gate.message, gate.status);
-
-    const admin = createAdminClient();
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '30');
-    const offset = parseInt(searchParams.get('offset') || '0');
-
-    const { data, error, count } = await admin
-      .from('admin_notifications')
-      .select(`
-        *,
-        sender:profiles!admin_notifications_sent_by_fkey(full_name, email)
-      `, { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw error;
-    return createResponse({ notifications: data || [], count: count ?? 0 });
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const gate = await requireAdmin(supabase);
-    if (!gate.ok) return createErrorResponse(gate.message, gate.status);
-
-    const body = broadcastSchema.parse(await request.json());
-    const admin = createAdminClient();
-
-    // Collect target user IDs
-    let targetUserIds: string[] = [];
-
-    if (body.target_type === 'all_workers') {
-      const { data } = await admin.from('profiles').select('id').eq('role', 'worker');
-      targetUserIds = (data || []).map((p: any) => p.id);
-    } else if (body.target_type === 'all_clients') {
-      const { data } = await admin.from('profiles').select('id').eq('role', 'client');
-      targetUserIds = (data || []).map((p: any) => p.id);
-    } else if (body.target_type === 'all_users') {
-      const { data } = await admin.from('profiles').select('id').not('role', 'eq', 'admin');
-      targetUserIds = (data || []).map((p: any) => p.id);
-    } else if (body.target_type === 'city' && body.target_city_id) {
-      // Workers in a city
-      const { data: workers } = await admin
-        .from('workers')
-        .select('id')
-        .eq('city_id', body.target_city_id);
-      const workerIds = (workers || []).map((w: any) => w.id);
-      // Clients in a city
-      const { data: clients } = await admin
-        .from('clients')
-        .select('id')
-        .eq('city_id', body.target_city_id);
-      const clientIds = (clients || []).map((c: any) => c.id);
-      targetUserIds = [...workerIds, ...clientIds];
-    } else if (body.target_type === 'specific_user' && body.target_user_id) {
-      targetUserIds = [body.target_user_id];
+    // 1. Validate Admin Session
+    const session = await getAdminSession();
+    if (!session || session.role !== 'admin' || session.admin_role !== 'super_admin') {
+      return NextResponse.json({ error: 'Unauthorized. Super Admin access required.' }, { status: 403 });
     }
 
-    // Insert notifications in bulk
-    if (targetUserIds.length > 0) {
-      const notifications = targetUserIds.map((userId) => ({
-        user_id: userId,
-        type: 'admin_broadcast',
-        title: body.title,
-        content: body.message,
-        is_read: false,
-      }));
+    const { target_type, target_user_id, title, message, notification_type } = await request.json();
 
-      // Insert in batches of 100 to avoid payload limits
-      const chunkSize = 100;
-      for (let i = 0; i < notifications.length; i += chunkSize) {
-        await admin.from('notifications').insert(notifications.slice(i, i + chunkSize));
-      }
+    if (!target_type || !title || !message) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Log the broadcast
-    const { data: adminNotif, error: logError } = await admin
-      .from('admin_notifications')
-      .insert({
-        sent_by: gate.user.id,
-        target_type: body.target_type,
-        target_city_id: body.target_city_id || null,
-        target_user_id: body.target_user_id || null,
-        title: body.title,
-        message: body.message,
-        notification_type: body.notification_type,
-        sent_count: targetUserIds.length,
-      })
-      .select()
-      .single();
+    const supabase = createAdminClient();
+    let userIds: string[] = [];
 
-    if (logError) throw logError;
+    // 2. Fetch Target Users
+    if (target_type === 'specific_user' && target_user_id) {
+      userIds = [target_user_id];
+    } else if (target_type === 'all_clients' || target_type === 'all_customers') {
+      // Fetch all client IDs
+      const { data } = await supabase.from('profiles').select('id').eq('role', 'client');
+      userIds = data?.map(p => p.id) || [];
+    } else if (target_type === 'all_workers') {
+      // Fetch all worker IDs
+      const { data } = await supabase.from('profiles').select('id').eq('role', 'worker');
+      userIds = data?.map(p => p.id) || [];
+    } else if (target_type === 'all_users') {
+      const { data } = await supabase.from('profiles').select('id').in('role', ['client', 'worker']);
+      userIds = data?.map(p => p.id) || [];
+    } else {
+      return NextResponse.json({ error: 'Invalid target type' }, { status: 400 });
+    }
 
-    await admin.rpc('log_admin_action', {
-      p_admin_id: gate.user.id,
-      p_action_type: 'notification_broadcast',
-      p_target_type: 'notification',
-      p_target_id: adminNotif.id,
-      p_target_name: body.title,
-      p_old_value: null,
-      p_new_value: {
-        target_type: body.target_type,
-        sent_count: targetUserIds.length,
-        notification_type: body.notification_type,
-      },
-      p_reason: body.message,
-      p_ip_address: request.headers.get('x-forwarded-for') || 'unknown',
+    if (userIds.length === 0) {
+      return NextResponse.json({ error: 'No users found for the specified target' }, { status: 404 });
+    }
+
+    let successCount = 0;
+
+    // 3. Dispatch Push Notifications
+    // In a real massive production system, this would be queued (e.g. SQS, Redis).
+    // For this scope, we process in batches of 50 to avoid timeout.
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      const batch = userIds.slice(i, i + BATCH_SIZE);
+      const pushPromises = batch.map(userId => 
+        fcmService.sendPushNotification(userId, { title, body: message })
+      );
+      
+      const results = await Promise.all(pushPromises);
+      successCount += results.filter(r => r.success).length;
+    }
+
+    // 4. Log in admin_notifications (Audit & History)
+    const { data: logEntry, error: logError } = await supabase.from('admin_notifications').insert({
+      sent_by: session.admin_id,
+      target_type: target_type === 'all_customers' ? 'all_clients' : target_type,
+      target_user_id: target_user_id || null,
+      title,
+      message,
+      notification_type: notification_type || 'announcement',
+      sent_count: userIds.length,
+    }).select().single();
+
+    if (logError) {
+      console.error('Failed to log admin_notification:', logError.message);
+    }
+
+    // 5. Audit Log the action
+    const { error: auditError } = await supabase.from('admin_logs').insert({
+      admin_id: session.admin_id,
+      action_type: 'send_global_notification',
+      target_type: target_type,
+      new_value: { title, target_count: userIds.length, success_push_count: successCount },
+      reason: 'Admin broadcast message',
     });
 
-    return createResponse({ success: true, sent_count: targetUserIds.length, notification: adminNotif }, 201);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return createErrorResponse('Invalid payload', 400, error.flatten().fieldErrors);
-    }
-    return handleApiError(error);
+    if (auditError) console.error('Audit log failed', auditError.message);
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Notifications dispatched',
+      totalTargets: userIds.length,
+      pushSuccessCount: successCount
+    });
+
+  } catch (error: any) {
+    console.error('Admin Notification Error:', error.message);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

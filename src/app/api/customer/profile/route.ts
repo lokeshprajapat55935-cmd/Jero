@@ -22,17 +22,17 @@ export async function GET(request: NextRequest) {
       return Response.json({ success: false, data: null, error: 'Failed to fetch profile' }, { status: 200 });
     }
 
-    // Fetch address from customers table
+    // Fetch address and KYC status from customers table
     const { data: customerData } = await admin
       .from('customers')
-      .select('address')
+      .select('address, kyc_status')
       .eq('profile_id', userId)
       .maybeSingle();
 
     const extendedProfile = profile ? {
       ...profile,
       address: customerData?.address || '',
-      kyc_status: 'unverified', // mock for customer
+      kyc_status: customerData?.kyc_status || 'unverified',
       referral_code: `ZOLVO${userId.substring(0, 5).toUpperCase()}`
     } : { 
       id: userId, 

@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { adminFetch } from '@/lib/admin/api';
 import logger from '@/lib/logger';
+import { cn } from '@/lib/utils';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -23,8 +25,10 @@ import {
   Clock,
   Eye,
   Camera,
-  Ban
+  Ban,
+  Users
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export function WorkerModeration() {
   const { toast } = useToast();
@@ -48,6 +52,21 @@ export function WorkerModeration() {
 
   useEffect(() => {
     loadWorkers();
+    
+    // Subscribe to realtime changes to automatically show new applications
+    const supabase = createClient();
+    const channel = supabase.channel('admin_workers_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workers' }, () => {
+        loadWorkers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        loadWorkers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -57,7 +76,7 @@ export function WorkerModeration() {
   const loadWorkers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/workers');
+      const res = await adminFetch('/api/admin/workers');
       const data = await res.json();
       if (data.workers) {
         setWorkers(data.workers);
@@ -142,7 +161,7 @@ export function WorkerModeration() {
         availability_status: newAvailability !== (selectedWorker.availability_db?.status || selectedWorker.availability?.status || 'offline') ? newAvailability : undefined,
       };
 
-      const res = await fetch('/api/admin/workers', {
+      const res = await adminFetch('/api/admin/workers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -175,64 +194,71 @@ export function WorkerModeration() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Badge className="bg-green-50 text-green-700 border-green-200">Approved</Badge>;
+        return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[inset_0_1px_0_0_rgba(52,211,153,0.1)]">Approved</Badge>;
       case 'under_review':
-        return <Badge className="bg-amber-50 text-amber-700 border-amber-200 animate-pulse">Under Review</Badge>;
+        return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-[inset_0_1px_0_0_rgba(245,158,11,0.1)] animate-pulse">Under Review</Badge>;
       case 'pending':
-        return <Badge className="bg-blue-50 text-blue-700 border-blue-200">Pending</Badge>;
+        return <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-[inset_0_1px_0_0_rgba(59,130,246,0.1)]">Pending</Badge>;
       case 'rejected':
-        return <Badge className="bg-red-50 text-red-700 border-red-200">Rejected</Badge>;
+        return <Badge className="bg-red-500/10 text-red-400 border border-red-500/20 shadow-[inset_0_1px_0_0_rgba(239,68,68,0.1)]">Rejected</Badge>;
       case 'suspended':
-        return <Badge className="bg-rose-100 text-rose-800 border-rose-200">Suspended</Badge>;
+        return <Badge className="bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[inset_0_1px_0_0_rgba(244,63,94,0.1)]">Suspended</Badge>;
+      case 'blocked':
+        return <Badge className="bg-red-600/10 text-red-500 border border-red-600/20 shadow-[inset_0_1px_0_0_rgba(220,38,38,0.1)]">Blocked</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary" className="border-white/10">{status}</Badge>;
     }
   };
 
   const getAvailabilityBadge = (status: string) => {
     switch (status) {
       case 'online':
-        return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Online</Badge>;
+        return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 gap-1.5 px-2"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_5px_rgba(52,211,153,0.5)]" />Online</Badge>;
       case 'busy':
-        return <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20">Busy</Badge>;
+        return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 gap-1.5 px-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Busy</Badge>;
       case 'unavailable':
-        return <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20">Unavailable</Badge>;
+        return <Badge className="bg-rose-500/10 text-rose-400 border border-rose-500/20 gap-1.5 px-2"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" />Unavailable</Badge>;
       case 'offline':
       default:
-        return <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/10">Offline</Badge>;
+        return <Badge className="bg-white/5 text-white/40 border border-white/10 gap-1.5 px-2"><span className="h-1.5 w-1.5 rounded-full bg-white/20" />Offline</Badge>;
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header and filters */}
+      {/* Tabs / Status Filter */}
+      <div className="flex border-b border-white/10 overflow-x-auto no-scrollbar gap-1 pb-1">
+        {['all', 'pending', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'].map((status) => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={cn(
+              'px-4 py-2 text-sm font-bold rounded-t-lg whitespace-nowrap transition-all duration-300',
+              statusFilter === status 
+                ? 'bg-white/5 text-white border-b-2 border-red-500' 
+                : 'text-white/40 hover:text-white/80 hover:bg-white/5 border-b-2 border-transparent'
+            )}
+          >
+            {status === 'all' ? 'All Partners' : status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            <Badge variant="secondary" className="ml-2 bg-white/10 text-white/60 border-none text-[10px] px-1.5 py-0">
+              {status === 'all' ? workers.length : workers.filter(w => w.status === status).length}
+            </Badge>
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
           <Input
             placeholder="Search partners by name, phone or category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-red-500/50"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-muted-foreground">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="flex h-9 w-36 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-semibold"
-            >
-              <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="under_review">Under Review</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="suspended">Suspended</option>
-            </select>
-          </div>
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-muted-foreground">Verification:</span>
@@ -265,27 +291,27 @@ export function WorkerModeration() {
       </div>
 
       {/* Main List */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden border-white/10 rounded-2xl shadow-xl bg-[#0a0a0f]/95 backdrop-blur-md">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="animate-spin text-primary" size={32} />
-            <p className="text-sm font-bold text-muted-foreground">Loading service partners registry...</p>
+            <Loader2 className="animate-spin text-red-500" size={32} />
+            <p className="text-sm font-bold text-white/40">Loading service partners registry...</p>
           </div>
         ) : filteredWorkers.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground font-medium">
+          <div className="text-center py-16 text-white/40 font-bold">
             No service partners found matching the filters.
           </div>
         ) : (
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Partner</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Categories</TableHead>
-                <TableHead>Wallet Balance</TableHead>
-                <TableHead>Availability</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+            <TableHeader className="bg-white/[0.02]">
+              <TableRow className="border-white/10 hover:bg-transparent">
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Partner</TableHead>
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Contact</TableHead>
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Categories</TableHead>
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Wallet Balance</TableHead>
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Availability</TableHead>
+                <TableHead className="text-white/60 font-black tracking-wider uppercase text-[10px]">Status</TableHead>
+                <TableHead className="text-right text-white/60 font-black tracking-wider uppercase text-[10px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -294,32 +320,32 @@ export function WorkerModeration() {
                 const walletBal = Number(worker.wallet?.balance || 0);
 
                 return (
-                  <TableRow key={worker.id} className="hover:bg-secondary/10">
+                  <TableRow key={worker.id} className="border-white/5 hover:bg-white/[0.02] transition-colors duration-200">
                     <TableCell>
-                      <div className="font-bold text-sm">{worker.profile?.full_name || 'N/A'}</div>
+                      <div className="font-bold text-sm text-white">{worker.profile?.full_name || 'N/A'}</div>
                       {worker.dob && (
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                        <div className="text-[10px] text-white/40 mt-0.5">
                           DOB: {new Date(worker.dob).toLocaleDateString()} · {worker.gender}
                         </div>
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm font-semibold">{worker.profile?.phone || 'N/A'}</div>
-                      <div className="text-xs text-muted-foreground">{worker.profile?.email || 'N/A'}</div>
+                      <div className="text-sm font-semibold text-white/90">{worker.profile?.phone || 'N/A'}</div>
+                      <div className="text-xs text-white/40">{worker.profile?.email || 'N/A'}</div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {categoriesList.map((cat: string) => (
-                          <Badge key={cat} variant="secondary" className="capitalize text-[10px] font-bold px-1.5 py-0">
-                            {cat.replace('_', ' ')}
+                          <Badge key={cat} variant="secondary" className="bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 capitalize text-[10px] font-bold px-1.5 py-0">
+                            {cat?.replace('_', ' ')}
                           </Badge>
                         ))}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1 text-sm font-black">
-                        <Wallet size={12} className="text-muted-foreground" />
-                        ₹{walletBal.toFixed(2)}
+                      <div className="flex items-center gap-1.5 text-sm font-black text-white/90">
+                        <Wallet size={12} className="text-emerald-400" />
+                        ₹{walletBal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -330,8 +356,7 @@ export function WorkerModeration() {
                       <div className="flex justify-end gap-1.5">
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="h-8 text-xs font-bold gap-1"
+                          className="h-8 text-xs font-bold gap-1.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 transition-all rounded-lg"
                           onClick={() => startModeration(worker, '', null)}
                         >
                           <Eye size={12} /> View & Moderate
@@ -349,56 +374,56 @@ export function WorkerModeration() {
       {/* Onboarding Details & Moderation Modal */}
       {selectedWorker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-lg p-6 space-y-5 animate-in fade-in-50 zoom-in-95 rounded-3xl border bg-card shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start border-b pb-3">
+          <Card className="w-full max-w-lg p-6 space-y-5 animate-in fade-in-50 zoom-in-95 rounded-3xl border border-white/10 bg-[#0a0a0f] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-white/10 pb-4">
               <div>
-                <h3 className="text-lg font-black text-foreground">Service Partner Verification</h3>
-                <p className="text-xs text-muted-foreground font-semibold mt-0.5">
-                  ID: {selectedWorker.id.substring(0, 8)}... · Status: <span className="capitalize font-bold text-primary">{selectedWorker.status.replace('_', ' ')}</span>
+                <h3 className="text-lg font-black text-white tracking-wide">Service Partner Verification</h3>
+                <p className="text-xs text-white/50 font-semibold mt-1">
+                  ID: {selectedWorker.id.substring(0, 8)}... · Status: <span className="capitalize font-black text-red-400">{selectedWorker.status.replace('_', ' ')}</span>
                 </p>
               </div>
-              <Button variant="ghost" size="sm" onClick={cancelModeration} className="h-8 w-8 rounded-full p-0">
+              <Button variant="ghost" size="sm" onClick={cancelModeration} className="h-8 w-8 rounded-full p-0 text-white/40 hover:text-white hover:bg-white/10 transition-colors">
                 ×
               </Button>
             </div>
 
             {/* Partner details panel */}
-            <div className="grid grid-cols-2 gap-4 text-xs font-bold bg-secondary/20 p-4 rounded-2xl border">
+            <div className="grid grid-cols-2 gap-4 text-xs font-bold bg-white/[0.02] p-5 rounded-2xl border border-white/[0.05]">
               <div>
-                <span className="text-muted-foreground block text-[10px] uppercase tracking-wider mb-0.5">Full Name</span>
-                <span className="text-sm font-extrabold text-foreground">{selectedWorker.profile?.full_name || 'N/A'}</span>
+                <span className="text-white/40 block text-[10px] uppercase tracking-wider mb-1">Full Name</span>
+                <span className="text-sm font-black text-white">{selectedWorker.profile?.full_name || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-muted-foreground block text-[10px] uppercase tracking-wider mb-0.5">Contact Phone</span>
-                <span className="text-sm font-extrabold text-foreground">{selectedWorker.profile?.phone || 'N/A'}</span>
+                <span className="text-white/40 block text-[10px] uppercase tracking-wider mb-1">Contact Phone</span>
+                <span className="text-sm font-black text-white">{selectedWorker.profile?.phone || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-muted-foreground block text-[10px] uppercase tracking-wider mb-0.5">Gender / DOB</span>
-                <span>{selectedWorker.gender || 'N/A'} · {selectedWorker.dob ? new Date(selectedWorker.dob).toLocaleDateString() : 'N/A'}</span>
+                <span className="text-white/40 block text-[10px] uppercase tracking-wider mb-1">Gender / DOB</span>
+                <span className="text-white/80">{selectedWorker.gender || 'N/A'} · {selectedWorker.dob ? new Date(selectedWorker.dob).toLocaleDateString() : 'N/A'}</span>
               </div>
               <div>
-                <span className="text-muted-foreground block text-[10px] uppercase tracking-wider mb-0.5">Wallet Balance</span>
-                <span className="text-sm font-black text-emerald-600">₹{Number(selectedWorker.wallet?.balance || 0).toFixed(2)}</span>
+                <span className="text-white/40 block text-[10px] uppercase tracking-wider mb-1">Wallet Balance</span>
+                <span className="text-sm font-black text-emerald-400">₹{Number(selectedWorker.wallet?.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 
             {/* Documents section */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-black uppercase tracking-wider text-muted-foreground">Uploaded Documents Verification</h4>
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-white/50">Uploaded Documents Verification</h4>
               {selectedWorker.documents && selectedWorker.documents.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {selectedWorker.documents.map((doc: any) => (
-                    <div key={doc.id} className="border p-3 rounded-xl bg-card/65 flex flex-col justify-between gap-3 shadow-sm">
+                    <div key={doc.id} className="border border-white/10 p-3 rounded-xl bg-white/[0.02] flex flex-col justify-between gap-3 shadow-sm hover:bg-white/[0.05] transition-colors">
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-black uppercase text-primary tracking-tight">
+                        <span className="text-[10px] font-black uppercase text-red-400 tracking-tight">
                           📄 {doc.document_type.replace('_', ' ')}
                         </span>
                         {doc.verified ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 text-[9px] font-bold rounded-lg border-none uppercase px-1.5 py-0">
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold rounded-lg uppercase px-1.5 py-0 shadow-[inset_0_1px_0_0_rgba(52,211,153,0.2)]">
                             Verified
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-[9px] font-bold rounded-lg border-none uppercase px-1.5 py-0 text-muted-foreground">
+                          <Badge variant="secondary" className="bg-white/10 text-white/60 border border-white/20 text-[9px] font-bold rounded-lg uppercase px-1.5 py-0">
                             Pending review
                           </Badge>
                         )}
@@ -407,23 +432,22 @@ export function WorkerModeration() {
                       {/* Inline Image Preview */}
                       {doc.document_url && (
                         <div 
-                          className="relative h-28 w-full rounded-lg overflow-hidden bg-secondary border border-border/40 cursor-zoom-in group"
+                          className="relative h-28 w-full rounded-lg overflow-hidden bg-black/50 border border-white/10 cursor-zoom-in group"
                           onClick={() => setPreviewImageUrl(doc.document_url)}
                         >
                           <img 
                             src={doc.document_url} 
                             alt={doc.document_type} 
-                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100"
                             onError={(e) => {
-                              // If loading fails (e.g. PDF or bad URL), hide the image preview and show a fallback
                               const target = e.target as HTMLElement;
                               if (target) {
                                 target.style.display = 'none';
                               }
                             }}
                           />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                            <Eye className="h-5 w-5 text-white" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm">
+                            <Eye className="h-6 w-6 text-white" />
                           </div>
                         </div>
                       )}
@@ -432,53 +456,53 @@ export function WorkerModeration() {
                         href={doc.document_url} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="text-[10px] text-primary font-bold hover:underline truncate flex items-center gap-1"
+                        className="text-[10px] text-red-400 font-bold hover:text-red-300 hover:underline truncate flex items-center gap-1.5 mt-1"
                       >
-                        <Eye size={10} /> Open in new tab
+                        <Eye size={12} /> Open in new tab
                       </a>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center p-4 border border-dashed rounded-2xl text-xs text-muted-foreground">
+                <div className="text-center p-6 border border-dashed border-white/20 rounded-2xl text-xs text-white/40 font-bold bg-white/[0.01]">
                   No documents uploaded.
                 </div>
               )}
             </div>
 
             {/* Availability override section */}
-            <div className="space-y-1.5 border-t pt-4">
-              <label className="text-xs font-bold text-muted-foreground flex items-center gap-1">
-                <Clock size={12} /> Override Availability Status
+            <div className="space-y-2 border-t border-white/10 pt-5">
+              <label className="text-xs font-black tracking-wide text-white/50 flex items-center gap-1.5 uppercase">
+                <Clock size={14} /> Override Availability Status
               </label>
               <select
                 value={newAvailability}
                 onChange={(e) => setNewAvailability(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-semibold"
+                className="flex h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 font-semibold"
               >
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-                <option value="busy">Busy</option>
-                <option value="unavailable">Unavailable</option>
+                <option value="online" className="bg-[#0a0a0f]">Online</option>
+                <option value="offline" className="bg-[#0a0a0f]">Offline</option>
+                <option value="busy" className="bg-[#0a0a0f]">Busy</option>
+                <option value="unavailable" className="bg-[#0a0a0f]">Unavailable</option>
               </select>
             </div>
 
             {/* Moderation note box */}
-            <div className="space-y-1 pt-3">
-              <label className="text-xs font-bold text-muted-foreground flex items-center gap-1">
-                <FileText size={12} /> Moderation Decision Notes
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-black tracking-wide text-white/50 flex items-center gap-1.5 uppercase">
+                <FileText size={14} /> Moderation Decision Notes
               </label>
               <textarea
                 value={moderationNote}
                 onChange={(e) => setModerationNote(e.target.value)}
-                placeholder="Reason for approval, rejection, or suspension. (This notes are visible to logs and worker alerts)"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium"
+                placeholder="Reason for approval, rejection, or suspension. (This note is visible in logs and to worker alerts)"
+                className="flex min-h-[90px] w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 font-medium resize-y"
               />
             </div>
 
             {/* Action buttons footer */}
-            <div className="flex flex-wrap gap-2 justify-end border-t pt-4">
-              <Button variant="outline" size="sm" onClick={cancelModeration} disabled={submittingMod} className="rounded-xl h-11 px-4">
+            <div className="flex flex-wrap gap-3 justify-end border-t border-white/10 pt-5">
+              <Button variant="outline" size="sm" onClick={cancelModeration} disabled={submittingMod} className="rounded-xl h-11 px-5 bg-transparent border-white/10 text-white/70 hover:bg-white/5 hover:text-white transition-all font-bold">
                 Close
               </Button>
               
@@ -491,9 +515,9 @@ export function WorkerModeration() {
                     setTimeout(() => submitModeration(), 100);
                   }}
                   disabled={submittingMod}
-                  className="rounded-xl h-11 px-4 bg-red-600 hover:bg-red-700 text-white gap-1"
+                  className="rounded-xl h-11 px-5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 gap-1.5 font-bold transition-all shadow-[inset_0_1px_0_0_rgba(239,68,68,0.2)]"
                 >
-                  <UserX size={14} /> Reject Application
+                  <UserX size={16} /> Reject Application
                 </Button>
               )}
 
@@ -506,9 +530,9 @@ export function WorkerModeration() {
                     setTimeout(() => submitModeration(), 100);
                   }}
                   disabled={submittingMod}
-                  className="rounded-xl h-11 px-4 bg-rose-700 hover:bg-rose-800 text-white gap-1"
+                  className="rounded-xl h-11 px-5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 gap-1.5 font-bold transition-all shadow-[inset_0_1px_0_0_rgba(244,63,94,0.2)]"
                 >
-                  <Ban size={14} /> Suspend Partner
+                  <Ban size={16} /> Suspend Partner
                 </Button>
               )}
 
@@ -520,9 +544,9 @@ export function WorkerModeration() {
                     setTimeout(() => submitModeration(), 100);
                   }}
                   disabled={submittingMod}
-                  className="rounded-xl h-11 px-5 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                  className="rounded-xl h-11 px-6 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 gap-1.5 font-bold transition-all shadow-[inset_0_1px_0_0_rgba(52,211,153,0.2)]"
                 >
-                  <UserCheck size={14} /> Approve & Activate
+                  <UserCheck size={16} /> Approve & Activate
                 </Button>
               )}
             </div>

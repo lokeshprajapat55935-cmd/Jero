@@ -5,24 +5,30 @@ import { HomeTopBar } from '@/components/customer/home/HomeTopBar';
 import { HomeSearchBar } from '@/components/customer/home/HomeSearchBar';
 import { PromoBanner } from '@/components/customer/home/PromoBanner';
 import { CategoryGrid } from '@/components/customer/home/CategoryGrid';
-import { RecommendedWorkers } from '@/components/customer/home/RecommendedWorkers';
 import { ActiveBookingCard } from '@/components/customer/home/ActiveBookingCard';
-import { CategoryGridSkeleton, RecommendedWorkersSkeleton } from '@/components/customer/home/HomeSkeletons';
-import { homeService, RecommendedWorker, ActiveBookingPreview } from '@/services/home';
-import type { ServiceCategory } from '@/types';
+import { RecentlyBooked } from '@/components/customer/home/RecentlyBooked';
+import { TopCategories } from '@/components/customer/home/TopCategories';
+import { WhyChooseZolvo } from '@/components/customer/home/WhyChooseZolvo';
+import { PromoStrip } from '@/components/customer/home/PromoStrip';
+import { 
+  CategoryGridSkeleton, 
+  BannerSkeleton 
+} from '@/components/customer/home/HomeSkeletons';
+import { homeService, ActiveBookingPreview } from '@/services/home';
+import { bookingService } from '@/services/booking';
+import type { ServiceCategory, Booking } from '@/types';
 import logger from '@/lib/logger';
 
 export default function CustomerDashboard() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [recommendations, setRecommendations] = useState<RecommendedWorker[]>([]);
   const [activeBooking, setActiveBooking] = useState<ActiveBookingPreview | null>(null);
+  const [bookingsHistory, setBookingsHistory] = useState<Booking[]>([]);
   
   const [loadingCategories, setLoadingCategories] = useState(true);
-  const [loadingRecommendations, setLoadingRecommendations] = useState(true);
   const [loadingBooking, setLoadingBooking] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   const [errorCategories, setErrorCategories] = useState(false);
-  const [errorRecommendations, setErrorRecommendations] = useState(false);
   const [errorBooking, setErrorBooking] = useState(false);
   
   const [isOffline, setIsOffline] = useState(false);
@@ -49,11 +55,10 @@ export default function CustomerDashboard() {
     if (isOffline) return;
 
     setLoadingCategories(true);
-    setLoadingRecommendations(true);
     setLoadingBooking(true);
+    setLoadingHistory(true);
     
     setErrorCategories(false);
-    setErrorRecommendations(false);
     setErrorBooking(false);
 
     // Fetch Categories
@@ -68,18 +73,6 @@ export default function CustomerDashboard() {
         setLoadingCategories(false);
       });
 
-    // Fetch Recommendations
-    homeService.getRecommendations()
-      .then(data => {
-        setRecommendations(data);
-        setLoadingRecommendations(false);
-      })
-      .catch(err => {
-        logger.error('Failed to load recommendations', err);
-        setErrorRecommendations(true);
-        setLoadingRecommendations(false);
-      });
-
     // Fetch Active Booking
     homeService.getActiveBooking()
       .then(data => {
@@ -91,17 +84,35 @@ export default function CustomerDashboard() {
         setErrorBooking(true);
         setLoadingBooking(false);
       });
+
+    // Fetch Booking History
+    bookingService.getMyBookings('client')
+      .then(res => {
+        if (res && res.data) {
+          setBookingsHistory(res.data);
+        }
+        setLoadingHistory(false);
+      })
+      .catch(err => {
+        logger.error('Failed to load bookings history', err);
+        setLoadingHistory(false);
+      });
   };
 
   useEffect(() => {
     loadData();
   }, [isOffline]);
 
+  // Combined global loading state for layout skeleton structure
+  const isGlobalLoading = loadingCategories && loadingBooking;
+
   return (
-    <div className="min-h-screen bg-white pb-24">
+    <div className="min-h-screen bg-[#F8FAFC] pb-24">
+      {/* SECTION 1 - Location Header */}
       <HomeTopBar />
       
-      <div className="max-w-md mx-auto sm:max-w-none">
+      <div className="max-w-md mx-auto sm:max-w-none bg-white min-h-screen shadow-sm pb-16">
+        {/* SECTION 2 - Search Bar & Pills */}
         <HomeSearchBar />
         
         {/* Offline Fallback */}
@@ -112,64 +123,41 @@ export default function CustomerDashboard() {
           </div>
         )}
 
-        {/* Active Booking Block */}
-        {errorBooking && (
-          <div className="mx-4 my-2 p-3 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-between">
-            <span className="text-xs font-bold text-red-700">Failed to refresh active bookings</span>
-            <button 
-              onClick={loadData} 
-              className="text-xs font-black text-blue-600 hover:text-blue-800 transition-colors uppercase tracking-wider"
-            >
-              Retry
-            </button>
+        {/* Global Loading Skeletons */}
+        {isGlobalLoading ? (
+          <div className="space-y-4">
+            <BannerSkeleton />
+            <CategoryGridSkeleton />
           </div>
-        )}
-        {!loadingBooking && !errorBooking && activeBooking && (
-          <ActiveBookingCard booking={activeBooking} />
-        )}
+        ) : (
+          <>
+            {/* Active Booking Card (only if loaded & valid, hidden on error/null per Empty State Rule) */}
+            {!loadingBooking && !errorBooking && activeBooking && (
+              <ActiveBookingCard booking={activeBooking} />
+            )}
 
-        <PromoBanner />
-        
-        {/* Categories Section */}
-        {errorCategories ? (
-          <div className="mx-4 my-4 p-4 border border-red-100 bg-red-50 rounded-2xl text-center">
-            <p className="text-sm font-semibold text-red-700">Failed to load categories</p>
-            <button 
-              onClick={loadData}
-              className="mt-2 text-xs font-black text-blue-600 hover:text-blue-800 transition-colors uppercase tracking-wider"
-            >
-              Retry
-            </button>
-          </div>
-        ) : loadingCategories ? (
-          <CategoryGridSkeleton />
-        ) : categories.length > 0 ? (
-          <CategoryGrid categories={categories} />
-        ) : (
-          <div className="mx-4 my-4 p-4 border border-gray-100 bg-gray-50 rounded-2xl text-center">
-            <p className="text-sm font-medium text-gray-500">No categories available at the moment</p>
-          </div>
-        )}
-        
-        {/* Recommendations Section */}
-        {errorRecommendations ? (
-          <div className="mx-4 my-4 p-4 border border-red-100 bg-red-50 rounded-2xl text-center">
-            <h3 className="text-sm font-semibold text-red-700 mb-1">Failed to load recommendations</h3>
-            <button 
-              onClick={loadData}
-              className="mt-1.5 text-xs font-black text-blue-600 hover:text-blue-800 transition-colors uppercase tracking-wider"
-            >
-              Retry
-            </button>
-          </div>
-        ) : loadingRecommendations ? (
-          <RecommendedWorkersSkeleton />
-        ) : recommendations.length > 0 ? (
-          <RecommendedWorkers workers={recommendations} />
-        ) : (
-          <div className="mx-4 my-4 p-4 border border-gray-100 bg-gray-50 rounded-2xl text-center">
-            <p className="text-sm font-medium text-gray-500 font-semibold">No recommended professionals nearby</p>
-          </div>
+            {/* SECTION 3 - JERO Hero Card */}
+            <PromoBanner />
+            
+            {/* SECTION 4 - Popular Services Grid (hidden on error/empty per Empty State Rule) */}
+            {!errorCategories && categories.length > 0 && (
+              <CategoryGrid categories={categories} />
+            )}
+            
+            {/* SECTION 6 - Top Categories Cards */}
+            <TopCategories />
+
+            {/* SECTION 5 - Recently Booked Section (hidden on error/empty per Empty State Rule) */}
+            {!loadingHistory && bookingsHistory.length > 0 && (
+              <RecentlyBooked bookings={bookingsHistory} />
+            )}
+
+            {/* SECTION 7 - Why Choose Jero (Trust Section) */}
+            <WhyChooseZolvo />
+
+            {/* SECTION 8 - Promotional Strip */}
+            <PromoStrip />
+          </>
         )}
       </div>
     </div>

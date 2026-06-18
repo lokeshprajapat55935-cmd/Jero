@@ -32,7 +32,7 @@ export default function Error({
       </h2>
       <p className="mb-8 text-muted-foreground max-w-md">
         {isChunkError 
-          ? "A new version of Zolvo is available. Please refresh the page to load the latest updates." 
+          ? "A new version of Jero is available. Please refresh the page to load the latest updates." 
           : "An unexpected error occurred. We've been notified and are working on a fix."}
       </p>
       <div className="flex gap-4">

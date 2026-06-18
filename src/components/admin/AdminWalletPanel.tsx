@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { adminFetch } from "@/lib/admin/api";
 
 interface WorkerWallet {
   worker_id: string;
@@ -47,7 +48,7 @@ export function AdminWalletPanel() {
   const fetchWallets = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/wallet");
+      const res = await adminFetch("/api/admin/wallet");
       const json = await res.json();
       if (!res.ok) throw new Error(json.message);
       setWallets(json.data?.wallets || []);
@@ -60,7 +61,7 @@ export function AdminWalletPanel() {
 
   const fetchWorkerDetail = async (workerId: string) => {
     try {
-      const res = await fetch(`/api/admin/wallet?worker_id=${workerId}`);
+      const res = await adminFetch(`/api/admin/wallet?worker_id=${workerId}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message);
       setWorkerDetail(json.data);
@@ -92,7 +93,7 @@ export function AdminWalletPanel() {
 
     setAdjusting(true);
     try {
-      const res = await fetch("/api/admin/wallet", {
+      const res = await adminFetch("/api/admin/wallet", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

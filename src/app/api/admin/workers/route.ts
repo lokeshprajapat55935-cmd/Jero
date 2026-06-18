@@ -18,10 +18,6 @@ export async function GET(request: Request) {
     const gate = await requireAdmin(supabase);
     if (!gate.ok) return createErrorResponse(gate.message, gate.status);
 
-    if (gate.adminRole && !['super_admin', 'operations_admin'].includes(gate.adminRole)) {
-      return createErrorResponse('Forbidden: Worker operations require Super Admin or Operations Admin privileges', 403);
-    }
-
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 100;
     const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
@@ -55,10 +51,6 @@ export async function PATCH(request: Request) {
     const supabase = await createClient();
     const gate = await requireAdmin(supabase);
     if (!gate.ok) return createErrorResponse(gate.message, gate.status);
-
-    if (gate.adminRole && !['super_admin', 'operations_admin'].includes(gate.adminRole)) {
-      return createErrorResponse('Forbidden: Worker operations require Super Admin or Operations Admin privileges', 403);
-    }
 
     const body = await request.json();
     const validated = moderateSchema.parse(body);
@@ -108,7 +100,7 @@ export async function PATCH(request: Request) {
 
     if (error) throw error;
 
-    // 3. Log status change in worker_status_logs
+    // 3. Log status change in worker_status_logs (existing behavior)
     await admin
       .from('worker_status_logs')
       .insert({
@@ -118,6 +110,20 @@ export async function PATCH(request: Request) {
         reason: validated.moderation_note || 'Status updated by administrator',
         changed_by: gate.user.id,
       });
+
+    // 4. Secure Enterprise Audit Log
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: `worker_${validated.status}`,
+      p_target_type: 'worker',
+      p_target_id: validated.worker_id,
+      p_target_name: data.profile?.full_name || 'Worker',
+      p_old_value: { status: currentWorker.status },
+      p_new_value: { status: validated.status, verified: validated.verified },
+      p_reason: validated.moderation_note || 'Worker moderation via Control Center',
+      p_ip_address: ipAddress
+    });
 
     return createResponse(data);
   } catch (error) {

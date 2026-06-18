@@ -16,9 +16,12 @@ import {
   Clock,
   CheckCircle2,
   Zap,
+  Wallet,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 interface LiveData {
   snapshot: {
@@ -31,6 +34,13 @@ interface LiveData {
     broadcasting_bookings: number;
     failed_dispatches?: number;
     active_dispatches?: number;
+    total_customers?: number;
+    total_workers?: number;
+    pending_withdrawals?: number;
+    month_revenue?: number;
+    platform_commission?: number;
+    cancelled_today?: number;
+    pending_approvals?: number;
   };
   active_bookings: any[];
   online_workers: any[];
@@ -320,8 +330,25 @@ export default function LiveOpsDashboard() {
 
   useEffect(() => {
     load();
+    
+    // Fallback polling
     const interval = setInterval(() => load(), POLL_INTERVAL);
-    return () => clearInterval(interval);
+    
+    // Supabase Realtime Enterprise Subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('admin_dashboard_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workers' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payout_logs' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_requests' }, () => load())
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -384,29 +411,102 @@ export default function LiveOpsDashboard() {
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+      {/* Stat Cards Row 1: Bookings & Dispatch */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-3">
         <LiveStatCard
           label="Active Bookings"
           value={snap?.active_bookings ?? 0}
-          subtitle="Not completed or cancelled"
+          subtitle="Live ongoing jobs"
           icon={Calendar}
           color="violet"
           pulse={!!snap?.active_bookings}
         />
         <LiveStatCard
-          label="Online Workers"
-          value={snap?.online_workers ?? 0}
-          subtitle="Status: online"
-          icon={Wrench}
+          label="Broadcasting"
+          value={snap?.broadcasting_bookings ?? 0}
+          subtitle="Searching for workers"
+          icon={Radio}
+          color="blue"
+          pulse={!!snap?.broadcasting_bookings}
+        />
+        <LiveStatCard
+          label="Completed Today"
+          value={snap?.today_bookings ?? 0}
+          subtitle="Successfully finished"
+          icon={CheckCircle2}
           color="emerald"
         />
+        <LiveStatCard
+          label="Cancelled Today"
+          value={snap?.cancelled_today ?? 0}
+          subtitle="Dropped bookings"
+          icon={AlertTriangle}
+          color={snap?.cancelled_today ? 'red' : 'emerald'}
+        />
+      </div>
+
+      {/* Stat Cards Row 2: Users & Operations */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-3">
+        <LiveStatCard
+          label="Online Workers"
+          value={snap?.online_workers ?? 0}
+          subtitle="Idle & Ready"
+          icon={Activity}
+          color="emerald"
+        />
+        <LiveStatCard
+          label="Total Workers"
+          value={(snap?.total_workers ?? 0).toLocaleString()}
+          subtitle="Platform professionals"
+          icon={Wrench}
+          color="violet"
+        />
+        <LiveStatCard
+          label="Total Customers"
+          value={(snap?.total_customers ?? 0).toLocaleString()}
+          subtitle="Registered clients"
+          icon={Users}
+          color="cyan"
+        />
+        <LiveStatCard
+          label="Pending Approvals"
+          value={snap?.pending_approvals ?? 0}
+          subtitle="Workers awaiting KYC"
+          icon={AlertTriangle}
+          color={snap?.pending_approvals ? 'amber' : 'emerald'}
+          pulse={!!snap?.pending_approvals}
+        />
+      </div>
+
+      {/* Stat Cards Row 2: Finance & Errors */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         <LiveStatCard
           label="Today Revenue"
           value={`₹${(snap?.today_revenue ?? 0).toLocaleString('en-IN')}`}
           subtitle={`${snap?.today_bookings ?? 0} completions today`}
           icon={IndianRupee}
-          color="amber"
+          color="emerald"
+        />
+        <LiveStatCard
+          label="Month Revenue"
+          value={`₹${(snap?.month_revenue ?? 0).toLocaleString('en-IN')}`}
+          subtitle="Gross Volume"
+          icon={TrendingUp}
+          color="emerald"
+        />
+        <LiveStatCard
+          label="Platform Commission"
+          value={`₹${(snap?.platform_commission ?? 0).toLocaleString('en-IN')}`}
+          subtitle="Net Revenue"
+          icon={CreditCard}
+          color="cyan"
+        />
+        <LiveStatCard
+          label="Pending Withdrawals"
+          value={snap?.pending_withdrawals ?? 0}
+          subtitle="Payout requests"
+          icon={Wallet}
+          color={snap?.pending_withdrawals ? 'amber' : 'emerald'}
         />
         <LiveStatCard
           label="Open Disputes"
@@ -423,30 +523,8 @@ export default function LiveOpsDashboard() {
           icon={CreditCard}
           color={snap?.failed_payments_24h ? 'red' : 'emerald'}
         />
-        <LiveStatCard
-          label="Broadcasting"
-          value={snap?.broadcasting_bookings ?? 0}
-          subtitle="Waiting for worker"
-          icon={Radio}
-          color="blue"
-          pulse={!!snap?.broadcasting_bookings}
-        />
-        <LiveStatCard
-          label="Active Dispatches"
-          value={snap?.active_dispatches ?? 0}
-          subtitle="Broadcasting requests"
-          icon={Radio}
-          color="violet"
-          pulse={!!snap?.active_dispatches}
-        />
-        <LiveStatCard
-          label="Failed Dispatches"
-          value={snap?.failed_dispatches ?? 0}
-          subtitle="Request timeouts"
-          icon={AlertTriangle}
-          color={snap?.failed_dispatches ? 'red' : 'emerald'}
-        />
       </div>
+
 
       {/* Booking Pipeline */}
       <div className="rounded-2xl bg-white/3 border border-white/8 p-5">

@@ -73,21 +73,21 @@ export const viewport = {
 
 export const metadata = {
   title: {
-    default: "Zolvo - Local Services Marketplace",
-    template: "%s | Zolvo",
+    default: "Jero - Local Services Marketplace",
+    template: "%s | Jero",
   },
   description: "Find and book trusted local professionals (electricians and plumbers) in Bhilwara in minutes.",
-  keywords: ["Zolvo", "Bhilwara", "local services", "electrician", "plumber", "home services", "hire local", "Rajasthan"],
-  authors: [{ name: "Zolvo Team" }],
-  creator: "Zolvo Team",
-  publisher: "Zolvo",
+  keywords: ["Jero", "Bhilwara", "local services", "electrician", "plumber", "home services", "hire local", "Rajasthan"],
+  authors: [{ name: "Jero Team" }],
+  creator: "Jero Team",
+  publisher: "Jero",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Zolvo",
+    title: "Jero",
   },
-  applicationName: "Zolvo",
+  applicationName: "Jero",
   alternates: {
     languages: {
       en: "/?lang=en",
@@ -95,16 +95,16 @@ export const metadata = {
     },
   },
   openGraph: {
-    title: "Zolvo - Local Worker Marketplace",
+    title: "Jero - Local Worker Marketplace",
     description: "Find and book trusted local professionals in Bhilwara with ease.",
     url: "https://zolvo.in",
-    siteName: "Zolvo",
+    siteName: "Jero",
     locale: "en_IN",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Zolvo - Local Worker Marketplace",
+    title: "Jero - Local Worker Marketplace",
     description: "Find and book trusted local professionals in Bhilwara with ease.",
   },
 };

@@ -1,7 +1,8 @@
 import React from 'react';
 import { CustomerProfile } from '@/services/profile.api';
-import { Mail, Phone, Shield, ShieldAlert, ShieldCheck, MapPin } from 'lucide-react';
+import { Mail, Phone, Shield, ShieldAlert, ShieldCheck, MapPin, ChevronRight, Clock, XCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 interface AccountSectionProps {
   profile: CustomerProfile | null;
@@ -30,7 +31,6 @@ export function AccountSection({
     );
   }
 
-  const email = profile?.email || 'No email added';
   const phone = profile?.phone || 'No phone number';
   const kycStatus = profile?.kyc_status || 'unverified';
 
@@ -46,14 +46,6 @@ export function AccountSection({
           <div className="flex-1 min-w-0">
             <p className="text-sm text-gray-900 font-medium truncate">{phone}</p>
             <p className="text-xs text-gray-500">Primary phone number</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 px-4 py-3 active:bg-gray-50 transition-colors">
-          <Mail className="w-5 h-5 text-gray-400 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-900 font-medium truncate">{email}</p>
-            <p className="text-xs text-gray-500">Email address</p>
           </div>
         </div>
 
@@ -76,26 +68,41 @@ export function AccountSection({
           </div>
         </div>
 
-        <div className="flex items-center gap-3 px-4 py-3 active:bg-gray-50 transition-colors">
+        <Link href="/profile/verification" className="flex items-center gap-3 px-4 py-3 active:bg-gray-50 transition-colors cursor-pointer group">
           {kycStatus === 'verified' ? (
             <ShieldCheck className="w-5 h-5 text-green-500 shrink-0" />
           ) : kycStatus === 'pending' ? (
-            <Shield className="w-5 h-5 text-amber-500 shrink-0" />
+            <Clock className="w-5 h-5 text-blue-500 shrink-0" />
+          ) : kycStatus === 'rejected' ? (
+            <XCircle className="w-5 h-5 text-red-500 shrink-0" />
           ) : (
-            <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
+            <ShieldAlert className="w-5 h-5 text-orange-500 shrink-0" />
           )}
           
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-900 font-medium capitalize">
-              {kycStatus} Account
+            <p className={`text-sm font-medium capitalize ${
+              kycStatus === 'verified' ? 'text-green-700' :
+              kycStatus === 'pending' ? 'text-blue-700' :
+              kycStatus === 'rejected' ? 'text-red-700' :
+              'text-orange-700'
+            }`}>
+              {kycStatus === 'verified' ? 'Verified Account' :
+               kycStatus === 'pending' ? 'Verification Under Review' :
+               kycStatus === 'rejected' ? 'Verification Rejected' :
+               'Unverified Account'}
             </p>
             <p className="text-xs text-gray-500">
-              {kycStatus === 'verified' 
-                ? 'Your identity is fully verified.' 
-                : 'Complete verification for full access.'}
+              {kycStatus === 'verified' ? 'Identity verified successfully.' :
+               kycStatus === 'pending' ? 'Your details are being reviewed.' :
+               kycStatus === 'rejected' ? 'Action required. Please resubmit.' :
+               'Complete verification for full access.'}
             </p>
           </div>
-        </div>
+          
+          {kycStatus !== 'verified' && kycStatus !== 'pending' && (
+            <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+          )}
+        </Link>
       </div>
     </div>
   );

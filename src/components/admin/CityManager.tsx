@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { adminFetch } from '@/lib/admin/api';
 import logger from '@/lib/logger';
 import { MapPin, Plus, Check, Loader2, X } from 'lucide-react';
 
@@ -68,7 +69,7 @@ export function AdminCityManager() {
 
   const loadCities = async () => {
     try {
-      const res = await fetch('/api/admin/cities');
+      const res = await adminFetch('/api/admin/cities');
       const data = await res.json();
       if (data.cities) {
         setCities(data.cities);
@@ -92,7 +93,7 @@ export function AdminCityManager() {
 
   const loadStates = async () => {
     try {
-      const res = await fetch('/api/admin/states');
+      const res = await adminFetch('/api/admin/states');
       const data = await res.json();
       if (data.states) {
         setStates(data.states);
@@ -107,7 +108,7 @@ export function AdminCityManager() {
 
   const loadConfig = async () => {
     try {
-      const res = await fetch('/api/admin/config/active-city');
+      const res = await adminFetch('/api/admin/config/active-city');
       const data = await res.json();
       setActiveCity(data.activeCity || 'bhilwara');
     } catch (error) {
@@ -137,7 +138,7 @@ export function AdminCityManager() {
 
     setSavingCity(true);
     try {
-      const res = await fetch('/api/admin/config/active-city', {
+      const res = await adminFetch('/api/admin/config/active-city', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ citySlug })
@@ -164,7 +165,7 @@ export function AdminCityManager() {
 
     setIsSubmittingCity(true);
     try {
-      const res = await fetch('/api/admin/cities', {
+      const res = await adminFetch('/api/admin/cities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

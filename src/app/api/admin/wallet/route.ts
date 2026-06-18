@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/supabase-server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createResponse, createErrorResponse, handleApiError, getAuthUserId } from '@/lib/api-utils';
+import { createResponse, createErrorResponse, handleApiError } from '@/lib/api-utils';
+import { requireAdmin } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { verifyAdminRole } from '@/lib/auth/admin-auth';
 
 const adjustmentSchema = z.object({
   worker_id: z.string().uuid(),
@@ -14,14 +14,8 @@ const adjustmentSchema = z.object({
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    const userId = await getAuthUserId(request as any, supabase);
-    if (!userId) return createErrorResponse('Not authenticated', 401);
-
-    // Enforce role-based admin permission check (super_admin or finance_admin)
-    const authCheck = await verifyAdminRole(userId, ['super_admin', 'finance_admin']);
-    if (!authCheck.authorized) {
-      return createErrorResponse('Forbidden: Wallet operations require Super Admin or Finance Admin privileges', 403);
-    }
+    const gate = await requireAdmin(supabase);
+    if (!gate.ok) return createErrorResponse(gate.message, gate.status);
 
     const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
@@ -62,14 +56,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const supabase = await createClient();
-    const userId = await getAuthUserId(request as any, supabase);
-    if (!userId) return createErrorResponse('Not authenticated', 401);
-
-    // Enforce role-based admin permission check (super_admin or finance_admin)
-    const authCheck = await verifyAdminRole(userId, ['super_admin', 'finance_admin']);
-    if (!authCheck.authorized) {
-      return createErrorResponse('Forbidden: Wallet adjustments require Super Admin or Finance Admin privileges', 403);
-    }
+    const gate = await requireAdmin(supabase);
+    if (!gate.ok) return createErrorResponse(gate.message, gate.status);
 
     const body = adjustmentSchema.parse(await request.json());
     const admin = createAdminClient();
@@ -80,12 +68,27 @@ export async function PATCH(request: Request) {
       p_amount: body.amount,
       p_type: body.type,
       p_description: body.description,
-      p_admin_id: userId,
+      p_admin_id: gate.user.id,
     });
 
     if (error) throw error;
 
-    const adjustResult = result as { success: boolean; type: string; amount: number; new_balance: number };
+    const adjustResult = result as { success: boolean; type: string; amount: number; new_balance: number; previous_balance: number };
+    
+    // Secure Enterprise Audit Log
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: `wallet_${body.type}`,
+      p_target_type: 'wallet',
+      p_target_id: body.worker_id,
+      p_target_name: `Worker Wallet ${body.worker_id}`,
+      p_old_value: { balance: adjustResult.previous_balance || 0 },
+      p_new_value: { balance: adjustResult.new_balance, amount: adjustResult.amount },
+      p_reason: body.description,
+      p_ip_address: ipAddress
+    });
+
     return createResponse({
       success: true,
       type: adjustResult.type,

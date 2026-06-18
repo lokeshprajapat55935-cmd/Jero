@@ -31,19 +31,19 @@ export default function TermsPage() {
               <Scale className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-gray-900">Zolvo Terms of Service</h2>
+              <h2 className="text-lg font-black text-gray-900">Jero Terms of Service</h2>
               <p className="text-xs text-gray-500">Last Updated: June 7, 2026 | Version 1.9</p>
             </div>
           </div>
 
           <p className="text-xs text-gray-500">
-            Welcome to Zolvo. By accessing, downloading, or using the Zolvo platform (web services, dynamic applications, and native Android packages), you agree to comply with and be bound by the following Terms & Conditions. Please read these terms carefully. If you do not agree to these terms, you must not use or access our Platform.
+            Welcome to Jero. By accessing, downloading, or using the Jero platform (web services, dynamic applications, and native Android packages), you agree to comply with and be bound by the following Terms & Conditions. Please read these terms carefully. If you do not agree to these terms, you must not use or access our Platform.
           </p>
 
           <section className="space-y-2">
             <h3 className="font-extrabold text-gray-900 text-base">1. Contractual Relationship</h3>
             <p>
-              These Terms constitute a legally binding agreement between you (the &quot;User&quot;, &quot;Client&quot;, or &quot;Service Provider&quot;) and Zolvo Technologies. Zolvo operates as an intermediary technology aggregator. We facilitate connections between individual consumers seeking household repairs and independent, verified freelance service professionals (such as plumbers and electricians). Zolvo does not directly employ service professionals, nor do we provide the actual plumbing or electrical repairs.
+              These Terms constitute a legally binding agreement between you (the &quot;User&quot;, &quot;Client&quot;, or &quot;Service Provider&quot;) and Jero Technologies. Jero operates as an intermediary technology aggregator. We facilitate connections between individual consumers seeking household repairs and independent, verified freelance service professionals (such as plumbers and electricians). Jero does not directly employ service professionals, nor do we provide the actual plumbing or electrical repairs.
             </p>
           </section>
 
@@ -76,7 +76,7 @@ export default function TermsPage() {
               <div>
                 <p className="font-bold text-red-950 mb-1">Strict Abuse & Suspensions Policy</p>
                 <p className="text-red-700 leading-normal mb-2">
-                  Zolvo incorporates automated safety thresholds to protect the integrity of the marketplace:
+                  Jero incorporates automated safety thresholds to protect the integrity of the marketplace:
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-red-700 leading-normal">
                   <li><strong>OTP Lockout:</strong> Booking completions require OTP validation. Multiple failed attempts (exceeding 5) will trigger a security lock and route the booking to a dispute log.</li>
@@ -104,12 +104,12 @@ export default function TermsPage() {
           <section className="space-y-2">
             <h3 className="font-extrabold text-gray-900 text-base">7. Limitation of Liability</h3>
             <p>
-              Zolvo shall not be liable for any direct, indirect, incidental, special, or consequential damages resulting from the quality of services performed by independent professionals, delays, worker misconduct, or any scheduling conflicts.
+              Jero shall not be liable for any direct, indirect, incidental, special, or consequential damages resulting from the quality of services performed by independent professionals, delays, worker misconduct, or any scheduling conflicts.
             </p>
           </section>
 
           <div className="border-t border-gray-100 pt-4 flex items-center justify-between text-xs text-gray-400 font-medium">
-            <p>© 2026 Zolvo Technologies. All rights reserved.</p>
+            <p>© 2026 Jero Technologies. All rights reserved.</p>
             <button onClick={() => router.back()} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
               Close Terms
             </button>

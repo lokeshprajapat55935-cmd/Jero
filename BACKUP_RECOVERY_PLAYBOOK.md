@@ -1,12 +1,12 @@
-# Zolvo Platform - Database Backup & Recovery Playbook
+# Jero Platform - Database Backup & Recovery Playbook
 
-This document details the database backup schedules, automated cron scripts, and step-by-step restoration procedures for the **Zolvo** production PostgreSQL database hosted on Supabase.
+This document details the database backup schedules, automated cron scripts, and step-by-step restoration procedures for the **Jero** production PostgreSQL database hosted on Supabase.
 
 ---
 
 ## 📂 1. BACKUP STRATEGY & SCHEDULE
 
-Zolvo enforces a dual-backup retention policy to ensure zero data loss under disaster recovery scenarios:
+Jero enforces a dual-backup retention policy to ensure zero data loss under disaster recovery scenarios:
 
 | Backup Type | Frequency | Retention Window | Storage Target | Responsibility |
 | :--- | :--- | :--- | :--- | :--- |
@@ -35,7 +35,7 @@ BACKUP_DB_PORT="6543"
 BACKUP_DB_NAME="postgres"
 BACKUP_DB_USER="postgres.[YOUR_PROJECT_ID]"
 BACKUP_DB_PASS="[YOUR_SECURE_PASSWORD]"
-BACKUP_DIR="/var/backups/zolvo"
+BACKUP_DIR="/var/backups/jero"
 ```
 
 ### Step 3: Write Backup Cron Script (`backup.sh`)
@@ -69,7 +69,7 @@ Configure permissions: `chmod +x backup.sh`
 Open cron configurations: `crontab -e`
 Add the following line to run the backup every Sunday at 02:00 AM:
 ```cron
-0 2 * * 0 /bin/bash /var/backups/zolvo/backup.sh >> /var/log/zolvo_backup.log 2>&1
+0 2 * * 0 /bin/bash /var/backups/jero/backup.sh >> /var/log/zolvo_backup.log 2>&1
 ```
 
 ---

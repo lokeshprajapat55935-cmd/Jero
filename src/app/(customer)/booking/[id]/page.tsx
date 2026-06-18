@@ -177,7 +177,7 @@ export default function BookingDetailPage() {
             <CheckCircle2 className="w-8 h-8 text-emerald-600 shrink-0" />
             <div>
               <p className="font-black text-emerald-900 text-lg">Booking Complete!</p>
-              <p className="text-sm text-emerald-700">Thank you for using Zolvo. We hope you loved the service.</p>
+              <p className="text-sm text-emerald-700">Thank you for using Jero. We hope you loved the service.</p>
             </div>
           </div>
         )}

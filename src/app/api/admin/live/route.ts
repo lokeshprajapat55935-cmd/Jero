@@ -10,6 +10,7 @@ export async function GET() {
     if (!gate.ok) return createErrorResponse(gate.message, gate.status);
 
     const admin = createAdminClient();
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
 
     // Run all snapshot queries in parallel for speed
     const [
@@ -22,6 +23,12 @@ export async function GET() {
       broadcastingRes,
       activeDispatchesRes,
       failedDispatchesRes,
+      totalCustomersRes,
+      totalWorkersRes,
+      pendingApprovalsRes,
+      pendingWithdrawalsRes,
+      monthRevenueRes,
+      cancelledTodayRes,
     ] = await Promise.all([
       admin
         .from('bookings')
@@ -52,8 +59,8 @@ export async function GET() {
       admin
         .from('bookings')
         .select('total_price, status')
-        .in('status', ['completed'])
-        .gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+        .in('status', ['completed', 'paid_completed'])
+        .gte('created_at', todayStart),
       admin
         .from('bookings')
         .select(`
@@ -83,10 +90,26 @@ export async function GET() {
         .from('dispatch_requests')
         .select('id', { count: 'exact' })
         .eq('status', 'expired'),
+      admin.from('profiles').select('id', { count: 'exact' }).eq('role', 'client'),
+      admin.from('profiles').select('id', { count: 'exact' }).eq('role', 'worker'),
+      admin.from('workers').select('id', { count: 'exact' }).eq('verification_status', 'pending'),
+      admin.from('payout_logs').select('id', { count: 'exact' }).eq('status', 'pending'),
+      admin.from('bookings').select('total_price, platform_fee').in('status', ['completed', 'paid_completed']).gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+      admin.from('bookings').select('id', { count: 'exact' }).eq('status', 'cancelled').gte('updated_at', todayStart),
     ]);
 
     const todayRevenue = (todayRevenueRes.data || []).reduce(
       (sum, b) => sum + Number(b.total_price || 0),
+      0
+    );
+
+    const monthRevenue = (monthRevenueRes.data || []).reduce(
+      (sum, b) => sum + Number(b.total_price || 0),
+      0
+    );
+
+    const platformCommission = (monthRevenueRes.data || []).reduce(
+      (sum, b) => sum + Number(b.platform_fee || 0),
       0
     );
 
@@ -104,9 +127,16 @@ export async function GET() {
         failed_payments_24h: failedPaymentsRes.count ?? 0,
         today_revenue: todayRevenue,
         today_bookings: (todayRevenueRes.data || []).length,
+        cancelled_today: cancelledTodayRes.count ?? 0,
         broadcasting_bookings: broadcastingRes.count ?? 0,
         failed_dispatches: failedDispatchesRes.count ?? 0,
         active_dispatches: (activeDispatchesRes.data || []).length,
+        total_customers: totalCustomersRes.count ?? 0,
+        total_workers: totalWorkersRes.count ?? 0,
+        pending_approvals: pendingApprovalsRes.count ?? 0,
+        pending_withdrawals: pendingWithdrawalsRes.count ?? 0,
+        month_revenue: monthRevenue,
+        platform_commission: platformCommission,
       },
       active_bookings: activeBookingsRes.data || [],
       online_workers: onlineWorkersList,

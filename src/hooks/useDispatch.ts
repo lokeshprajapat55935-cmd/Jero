@@ -155,11 +155,27 @@ export function useDispatch(workerId: string | null | undefined): UseDispatchRet
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'worker_availability',
+          filter: `worker_id=eq.${workerId}`,
+        },
+        (payload: any) => {
+          if (payload.new?.status) {
+            setWorkerStatus(payload.new.status);
+          } else {
+            // Fallback if payload doesn't contain status due to REPLICA IDENTITY
+            fetchRequests(true);
+          }
+        }
+      )
       .subscribe((status: string, err?: Error) => {
         if (mountedRef.current) {
           setIsRealtimeConnected(status === 'SUBSCRIBED');
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // Log for diagnostics but don't crash — polling fallback covers us
             console.warn('[useDispatch] Realtime channel error:', status, err?.message);
           }
         }

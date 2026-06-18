@@ -52,7 +52,7 @@ export default function ClientsPage() {
     ));
   }, [clients, search]);
 
-  const handleAction = async (clientId: string, action: 'suspend' | 'unsuspend', name: string) => {
+  const handleAction = async (clientId: string, action: 'block' | 'unblock', name: string) => {
     const reason = window.prompt(`Reason for ${action}ing ${name}:`);
     if (!reason || reason.trim().length < 5) { toast({ title: 'Reason required (min 5 chars)' }); return; }
     setActionLoading(clientId);
@@ -161,11 +161,18 @@ export default function ClientsPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleAction(c.id, 'suspend', c.profile?.full_name)}
+                          onClick={() => handleAction(c.id, 'block', c.profile?.full_name)}
                           disabled={actionLoading === c.id}
                           className="px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black hover:bg-red-500/20 transition-all disabled:opacity-50"
                         >
-                          Suspend
+                          Block
+                        </button>
+                        <button
+                          onClick={() => handleAction(c.id, 'unblock', c.profile?.full_name)}
+                          disabled={actionLoading === c.id}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                        >
+                          Unblock
                         </button>
                       </div>
                     </td>

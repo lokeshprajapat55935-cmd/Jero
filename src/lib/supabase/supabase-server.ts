@@ -1,10 +1,10 @@
-
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { config } from '@/config';
 
 export async function createClient() {
   const cookieStore = await cookies();
+  const headersList = await headers();
   const url = config.env.supabase.url;
   const key = config.env.supabase.anonKey;
 
@@ -12,10 +12,16 @@ export async function createClient() {
     throw new Error('Missing Supabase URL or Anon Key in environment variables');
   }
 
+  const appType = headersList.get('x-zolvo-app-type') || 'customer';
+  const cookieName = appType === 'worker' ? 'zolvo_worker_session' : 'zolvo_customer_session';
+
   return createServerClient(
     url,
     key,
     {
+      cookieOptions: {
+        name: cookieName,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -35,4 +41,3 @@ export async function createClient() {
     }
   );
 }
-
