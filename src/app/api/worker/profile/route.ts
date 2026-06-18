@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/supabase-server';
-import { createResponse, createErrorResponse, handleApiError, getAuthUserId } from '@/lib/api-utils';
+import { createResponse, createErrorResponse, handleApiError } from '@/lib/api-utils';
+import { requireWorker } from '@/lib/auth/server-guard';
 import { z } from 'zod';
 
 const workerProfileSchema = z.object({
@@ -20,10 +21,8 @@ const workerProfileSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const userId = await getAuthUserId(request as any, supabase);
-
-    if (!userId) return createErrorResponse('Unauthorized', 401);
+    const { user, supabase } = await requireWorker();
+    const userId = user.id;
 
     const { data, error } = await supabase
       .from('workers')
@@ -59,10 +58,8 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const supabase = await createClient();
-    const userId = await getAuthUserId(request as any, supabase);
-
-    if (!userId) return createErrorResponse('Unauthorized', 401);
+    const { user, supabase } = await requireWorker();
+    const userId = user.id;
 
     const body = await request.json();
     const validatedData = workerProfileSchema.partial().parse(body);

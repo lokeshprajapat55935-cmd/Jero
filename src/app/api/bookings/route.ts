@@ -10,6 +10,7 @@ import {
 } from '@/lib/booking/constants';
 import { z } from 'zod';
 import { encryptOtp, decryptOtp, hashOtp } from '@/lib/booking/otp-crypto';
+import { applyRateLimit } from '@/lib/rate-limit';
 
 const createBookingSchema = z.object({
   category: z.string().min(1),
@@ -214,11 +215,21 @@ export async function POST(request: Request) {
       return createErrorResponse('Unauthorized', 401);
     }
 
+    // Rate Limit: 5 bookings per 5 minutes per user
+    const rateLimitError = applyRateLimit(`booking_create_${userId}`, 5, 5 * 60 * 1000);
+    if (rateLimitError) return rateLimitError;
+
+    const admin = createAdminClient();
+    // Enforce Customer role
+    const { data: profile } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle();
+    if (profile?.role !== 'client') {
+      return createErrorResponse('Only customers can create bookings', 403);
+    }
+
     const body = await request.json();
     console.log('[POST /api/bookings] Request body:', JSON.stringify(body, null, 2));
     
     const validated = createBookingSchema.parse(body);
-    const admin = createAdminClient();
 
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const userAgent = request.headers.get('user-agent') || 'unknown';
@@ -575,6 +586,9 @@ export async function PATCH(request: Request) {
     if (validated.payment_status) {
       if (existing.payment_method !== 'cash') {
         return createErrorResponse('Online payment status must be updated through the secure verification channel.', 400);
+      }
+      if (existing.worker_id !== userId) {
+        return createErrorResponse('Only the assigned professional can mark cash payments as received.', 403);
       }
       updates.payment_status = validated.payment_status;
     }

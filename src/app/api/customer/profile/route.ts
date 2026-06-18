@@ -1,15 +1,18 @@
 import { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUserId } from '@/lib/api-utils';
+import { requireClient } from '@/lib/auth/server-guard';
+import { z } from 'zod';
+
+const updateProfileSchema = z.object({
+  full_name: z.string().min(2).max(100).optional(),
+  email: z.string().email().optional(),
+  avatar_url: z.string().url().optional(),
+  address: z.string().max(300).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = createAdminClient();
-    const userId = await getAuthUserId(request, admin);
-    
-    if (!userId) {
-      return Response.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, admin } = await requireClient();
+    const userId = user.id;
 
     const { data: profile, error } = await admin
       .from('profiles')
@@ -52,23 +55,26 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const admin = createAdminClient();
-    const userId = await getAuthUserId(request, admin);
-    
-    if (!userId) {
-      return Response.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, admin } = await requireClient();
+    const userId = user.id;
 
     const body = await request.json().catch(() => ({}));
+    const validated = updateProfileSchema.safeParse(body);
+    
+    if (!validated.success) {
+      return Response.json({ success: false, data: null, error: 'Validation failed', details: validated.error.flatten() }, { status: 400 });
+    }
+    
+    const { full_name, email, avatar_url, address } = validated.data;
     
     const updates: Record<string, any> = {};
-    if (body.full_name !== undefined) updates.full_name = body.full_name;
-    if (body.email !== undefined) updates.email = body.email;
-    if (body.avatar_url !== undefined) updates.avatar_url = body.avatar_url;
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (email !== undefined) updates.email = email;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url;
     
     const customerUpdates: Record<string, any> = {};
-    if (body.full_name !== undefined) customerUpdates.full_name = body.full_name;
-    if (body.address !== undefined) customerUpdates.address = body.address;
+    if (full_name !== undefined) customerUpdates.full_name = full_name;
+    if (address !== undefined) customerUpdates.address = address;
     
     if (Object.keys(updates).length === 0 && Object.keys(customerUpdates).length === 0) {
       return Response.json({ success: false, data: null, error: 'No valid fields to update' }, { status: 400 });

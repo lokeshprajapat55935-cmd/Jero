@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/supabase-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createErrorResponse, createResponse, handleApiError, getAuthUserId } from '@/lib/api-utils';
+import { createResponse, createErrorResponse, handleApiError, getAuthUserId } from '@/lib/api-utils';
+import { getPaymentProvider } from '@/lib/payments/factory';
 import { z } from "zod";
 
 const verifyPaymentSchema = z.object({
@@ -8,6 +9,9 @@ const verifyPaymentSchema = z.object({
   payment_method: z.enum(["cash", "upi", "card"]),
   payment_reference: z.string().optional(),
   material_charge: z.number().min(0).optional(),
+  razorpay_order_id: z.string().optional(),
+  razorpay_payment_id: z.string().optional(),
+  razorpay_signature: z.string().optional(),
 });
 
 const BOOKING_SELECT = `
@@ -172,9 +176,30 @@ export async function POST(request: Request) {
         })
         .eq("id", booking.id);
     } else {
-      // ONLINE FLOW (UPI/CARD): Mark as payment_verified, then wait for OTP
-      // In a real app, this is where we'd verify the gateway response.
-      // For stabilization, we assume success if reference is provided.
+      // ONLINE FLOW (UPI/CARD): Enforce Razorpay Signature Validation
+      if (!body.razorpay_order_id || !body.razorpay_payment_id || !body.razorpay_signature) {
+        return createErrorResponse("Missing required payment verification details", 400);
+      }
+
+      const provider = getPaymentProvider();
+      const verification = await provider.verifyPayment({
+        razorpay_order_id: body.razorpay_order_id,
+        razorpay_payment_id: body.razorpay_payment_id,
+        razorpay_signature: body.razorpay_signature,
+      });
+
+      if (!verification.success) {
+        await handlePaymentFailure(
+          admin, 
+          booking.id, 
+          transactionRecord.id, 
+          "Razorpay signature verification failed", 
+          userId, 
+          body.payment_method
+        );
+        return createErrorResponse("Payment signature verification failed", 400);
+      }
+
       await admin
         .from("bookings")
         .update({
@@ -182,6 +207,7 @@ export async function POST(request: Request) {
           payment_status: "paid",
           payment_completed_at: now,
           updated_at: now,
+          payment_reference: body.razorpay_payment_id,
         })
         .eq("id", booking.id);
       

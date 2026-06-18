@@ -74,10 +74,14 @@ export async function POST(request: Request) {
     if (fetchErr) throw fetchErr;
     if (!booking) return createErrorResponse('Booking not found', 404);
 
-    // Allow adding items in active work states
-    const allowedStatuses = ['work_started', 'started', 'work_completed', 'awaiting_item_approval', 'item_approved', 'work_completed_pending_otp'];
+    if (booking.worker_id !== userId) {
+      return createErrorResponse('Only the assigned worker can add items', 403);
+    }
+
+    // Allow adding items in active work states before approval
+    const allowedStatuses = ['work_started', 'started', 'work_completed', 'awaiting_item_approval'];
     if (!allowedStatuses.includes(booking.status)) {
-      return createErrorResponse(`Cannot add items in current booking status: ${booking.status}`, 400);
+      return createErrorResponse(`Cannot add items in current booking status: ${booking.status}. Materials bill is locked.`, 400);
     }
 
     const itemTotal = validated.quantity * validated.unit_price;
@@ -260,9 +264,10 @@ export async function DELETE(request: Request) {
       return createErrorResponse('Forbidden: Only the assigned worker can manage materials', 403);
     }
 
-    // Must be in work_completed or awaiting_item_approval
-    if (booking.status !== 'work_completed' && booking.status !== 'awaiting_item_approval') {
-      return createErrorResponse(`Cannot remove items in current booking status: ${booking.status}`, 400);
+    // Must be in active work states before approval
+    const allowedDeleteStatuses = ['work_started', 'started', 'work_completed', 'awaiting_item_approval'];
+    if (!allowedDeleteStatuses.includes(booking.status)) {
+      return createErrorResponse(`Cannot remove items in current booking status: ${booking.status}. Materials bill is locked.`, 400);
     }
 
     // Delete item
