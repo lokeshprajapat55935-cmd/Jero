@@ -1,22 +1,15 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUserId } from '@/lib/api-utils';
+import { createClient } from '@/lib/supabase/supabase-server';
+import { requireAdmin } from '@/lib/auth/admin';
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const gate = await requireAdmin(supabase);
+    if (!gate.ok) return NextResponse.json({ success: false, data: null, error: gate.message }, { status: gate.status });
+
     const admin = createAdminClient();
-    const userId = await getAuthUserId(request, admin);
-    
-    if (!userId) {
-      return Response.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Verify admin role
-    const { data: profile } = await admin.from('profiles').select('role').eq('id', userId).single();
-    if (profile?.role !== 'admin') {
-      return Response.json({ success: false, data: null, error: 'Forbidden' }, { status: 403 });
-    }
-
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status'); // pending, approved, rejected
     
@@ -51,18 +44,11 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const admin = createAdminClient();
-    const userId = await getAuthUserId(request, admin);
-    
-    if (!userId) {
-      return Response.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const supabase = await createClient();
+    const gate = await requireAdmin(supabase);
+    if (!gate.ok) return NextResponse.json({ success: false, data: null, error: gate.message }, { status: gate.status });
 
-    // Verify admin role
-    const { data: profile } = await admin.from('profiles').select('role').eq('id', userId).single();
-    if (profile?.role !== 'admin') {
-      return Response.json({ success: false, data: null, error: 'Forbidden' }, { status: 403 });
-    }
+    const admin = createAdminClient();
 
     const body = await request.json().catch(() => null);
     if (!body || !body.id || !body.status) {
@@ -101,6 +87,19 @@ export async function PATCH(request: NextRequest) {
       .from('customers')
       .update({ kyc_status: customerKycStatus })
       .eq('profile_id', data.profile_id);
+
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: `kyc_verification_${status}`,
+      p_target_type: 'customer',
+      p_target_id: data.profile_id,
+      p_target_name: `Customer KYC ${data.profile_id}`,
+      p_old_value: null,
+      p_new_value: { status },
+      p_reason: notes || `KYC Verification marked as ${status}`,
+      p_ip_address: ipAddress
+    });
 
     return Response.json({ success: true, data }, { status: 200 });
   } catch (err) {

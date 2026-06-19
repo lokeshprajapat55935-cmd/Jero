@@ -8,6 +8,7 @@ import logger from '@/lib/logger';
 const DEV_AUTH_PASSWORD = config.env.otp.devAuthPassword || 'zolvo-local-dev-auth-only';
 
 const TEST_MOBILE = '7014868682';
+const TEST_MOBILE_2 = '9928340308';
 
 function getAuthEmail(phone: string) {
   return `phone-${phone.replace(/\D/g, '')}@phone.zolvo.local`;
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
       }
 
       const devOtpCode = config.env.otp.devCode || '123456';
-      const isMockToken = token === devOtpCode && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE);
+      const isMockToken = token === devOtpCode && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE || phone === `+91${TEST_MOBILE_2}` || phone === TEST_MOBILE_2 || config.env.isDev);
 
       if (!isMockToken) {
         // Verify Firebase ID Token via Google Identity Toolkit

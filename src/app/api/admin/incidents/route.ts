@@ -49,6 +49,18 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'incident_reported',
+      p_target_type: 'security_log',
+      p_target_id: data.id,
+      p_target_name: `Incident: ${validated.event_type}`,
+      p_old_value: null,
+      p_new_value: { severity: validated.severity, description: validated.description },
+      p_reason: 'Admin manually reported an incident',
+      p_ip_address: ip
+    });
+
     return createResponse({
       success: true,
       log: data,

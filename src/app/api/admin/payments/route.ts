@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
     const { data: booking, error: fetchError } = await admin
       .from("bookings")
-      .select("id, client_id, worker_id, payment_method, total_price, commission_deducted, payment_status, service_charge, commission_amount")
+      .select("id, status, client_id, worker_id, payment_method, total_price, commission_deducted, payment_status, service_charge, commission_amount")
       .eq("id", body.booking_id)
       .maybeSingle();
 
@@ -101,6 +101,19 @@ export async function POST(request: Request) {
         status: finalStatus,
         reason: `Manually verified by administrator: ${body.reason}. Reference: ${ref}`,
         created_by: gate.user?.id,
+      });
+
+      const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      await admin.rpc('log_admin_action', {
+        p_admin_id: gate.user?.id,
+        p_action_type: 'payment_manual_verify',
+        p_target_type: 'booking',
+        p_target_id: booking.id,
+        p_target_name: `Booking Payment ${booking.id.substring(0, 8)}`,
+        p_old_value: { payment_status: booking.payment_status },
+        p_new_value: { payment_status: 'paid', reference: ref },
+        p_reason: body.reason,
+        p_ip_address: ipAddress
       });
 
       return createResponse({ success: true, message: "Transaction manually verified" });
@@ -165,6 +178,19 @@ export async function POST(request: Request) {
         created_by: gate.user?.id,
       });
 
+      const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      await admin.rpc('log_admin_action', {
+        p_admin_id: gate.user?.id,
+        p_action_type: 'payment_refund',
+        p_target_type: 'booking',
+        p_target_id: booking.id,
+        p_target_name: `Booking Refund ${booking.id.substring(0, 8)}`,
+        p_old_value: { status: booking.status, payment_status: booking.payment_status },
+        p_new_value: { status: 'cancelled', payment_status: 'pending' },
+        p_reason: body.reason,
+        p_ip_address: ipAddress
+      });
+
       return createResponse({ success: true, message: "Refund issued successfully" });
     }
 
@@ -185,6 +211,19 @@ export async function POST(request: Request) {
         status: finalStatus,
         reason: `Dispute resolved by administrator: ${body.reason}. Status marked as ${finalStatus}.`,
         created_by: gate.user?.id,
+      });
+
+      const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      await admin.rpc('log_admin_action', {
+        p_admin_id: gate.user?.id,
+        p_action_type: 'dispute_resolve',
+        p_target_type: 'booking',
+        p_target_id: booking.id,
+        p_target_name: `Booking Dispute ${booking.id.substring(0, 8)}`,
+        p_old_value: { status: booking.status },
+        p_new_value: { status: finalStatus },
+        p_reason: body.reason,
+        p_ip_address: ipAddress
       });
 
       return createResponse({ success: true, message: "Dispute resolved successfully" });

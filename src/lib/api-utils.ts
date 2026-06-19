@@ -170,9 +170,10 @@ export function createErrorResponse(message: string, status: number = 400, error
 export function handleApiError(error: any) {
   logger.error('[API Error]', error);
   
+  const isDev = config.env.isDev;
+
   // Handle Supabase errors
   if (error && typeof error === 'object' && 'code' in error) {
-    const isDev = config.env.isDev;
     // P0001 is user-raised exception from triggers or functions (e.g. state validations, distance checks)
     if (error.code === 'P0001' || error.message?.includes('P0001')) {
       // Strip system formatting if needed, return clean message
@@ -191,12 +192,13 @@ export function handleApiError(error: any) {
     );
   }
 
-  const message = error.message || 'An unexpected error occurred';
+  // Generic errors
+  const message = isDev ? (error.message || 'An unexpected error occurred') : 'An unexpected internal error occurred';
   const status = error.status || 500;
   
   return createErrorResponse(
     message,
     status,
-    config.env.isDev ? error : undefined
+    isDev ? error : undefined
   );
 }

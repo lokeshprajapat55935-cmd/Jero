@@ -95,6 +95,8 @@ export async function PATCH(request: Request) {
 
     if (error) throw error;
 
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+
     await admin.from('booking_timeline').insert({
       booking_id: validated.booking_id,
       status: validated.status,
@@ -126,14 +128,16 @@ export async function PATCH(request: Request) {
 
     await admin.from('notifications').insert(notificationsToInsert);
 
-    await admin.from('admin_logs').insert({
-      admin_id: gate.user.id,
-      action_type: 'booking_status_update',
-      target_type: 'booking',
-      target_id: data.id,
-      target_name: `${data.category} booking`,
-      new_value: { status: validated.status },
-      reason: validated.reason || null,
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'booking_status_update',
+      p_target_type: 'booking',
+      p_target_id: data.id,
+      p_target_name: `${data.category} booking`,
+      p_old_value: null,
+      p_new_value: { status: validated.status },
+      p_reason: validated.reason || 'Status override',
+      p_ip_address: ipAddress
     });
 
     return createResponse(data);
@@ -169,6 +173,8 @@ export async function PUT(request: Request) {
     if (['completed', 'cancelled', 'disputed'].includes(booking.status)) {
       return createErrorResponse(`Cannot reassign a ${booking.status} booking.`, 400);
     }
+
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
     const { data: newWorker } = await admin
       .from('workers')
@@ -235,15 +241,16 @@ export async function PUT(request: Request) {
 
     await admin.from('notifications').insert(notifications);
 
-    await admin.from('admin_logs').insert({
-      admin_id: gate.user.id,
-      action_type: 'booking_reassign',
-      target_type: 'booking',
-      target_id: validated.booking_id,
-      target_name: `${booking.category} booking`,
-      old_value: { worker_id: oldWorkerId },
-      new_value: { worker_id: validated.new_worker_id },
-      reason: validated.reason,
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'booking_reassign',
+      p_target_type: 'booking',
+      p_target_id: validated.booking_id,
+      p_target_name: `${booking.category} booking`,
+      p_old_value: { worker_id: oldWorkerId },
+      p_new_value: { worker_id: validated.new_worker_id },
+      p_reason: validated.reason,
+      p_ip_address: ipAddress
     });
 
     return createResponse({ booking_id: validated.booking_id, new_worker_id: validated.new_worker_id });
@@ -278,6 +285,8 @@ export async function DELETE(request: Request) {
     if (fetchErr || !booking) return createErrorResponse('Booking not found.', 404);
     if (booking.status === 'completed') return createErrorResponse('Cannot cancel a completed booking.', 400);
     if (booking.status === 'cancelled') return createErrorResponse('Booking is already cancelled.', 400);
+
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
     const { error: cancelErr } = await admin
       .from('bookings')
@@ -327,13 +336,16 @@ export async function DELETE(request: Request) {
     }
     await admin.from('notifications').insert(notifications);
 
-    await admin.from('admin_logs').insert({
-      admin_id: gate.user.id,
-      action_type: 'booking_cancel',
-      target_type: 'booking',
-      target_id: validated.booking_id,
-      target_name: `${booking.category} booking`,
-      reason: validated.reason,
+    await admin.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'booking_cancel',
+      p_target_type: 'booking',
+      p_target_id: validated.booking_id,
+      p_target_name: `${booking.category} booking`,
+      p_old_value: null,
+      p_new_value: { status: 'cancelled' },
+      p_reason: validated.reason,
+      p_ip_address: ipAddress
     });
 
     return createResponse({ booking_id: validated.booking_id, status: 'cancelled' });

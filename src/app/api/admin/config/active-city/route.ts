@@ -79,6 +79,19 @@ export async function POST(request: Request) {
     // Clear server location cache to force reload across endpoints
     locationService.clearServerCache();
 
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    await supabase.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'config_active_city_update',
+      p_target_type: 'settings',
+      p_target_id: 'active_city_slug',
+      p_target_name: 'Active City Configuration',
+      p_old_value: null,
+      p_new_value: { citySlug: body.citySlug, cityName: cityExists.name },
+      p_reason: `Switched active city to ${cityExists.name}`,
+      p_ip_address: ipAddress
+    });
+
     return createResponse({
       message: `Active city changed to ${cityExists.name}`,
       activeCity: body.citySlug

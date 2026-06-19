@@ -74,12 +74,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Audit Log the action
-    const { error: auditError } = await supabase.from('admin_logs').insert({
-      admin_id: session.admin_id,
-      action_type: 'send_global_notification',
-      target_type: target_type,
-      new_value: { title, target_count: userIds.length, success_push_count: successCount },
-      reason: 'Admin broadcast message',
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    const { error: auditError } = await supabase.rpc('log_admin_action', {
+      p_admin_id: session.admin_id,
+      p_action_type: 'send_global_notification',
+      p_target_type: target_type,
+      p_target_id: logEntry?.id || 'broadcast',
+      p_target_name: `Notification: ${title}`,
+      p_old_value: null,
+      p_new_value: { title, target_count: userIds.length, success_push_count: successCount },
+      p_reason: 'Admin broadcast message',
+      p_ip_address: ipAddress
     });
 
     if (auditError) console.error('Audit log failed', auditError.message);

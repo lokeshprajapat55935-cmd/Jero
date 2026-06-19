@@ -184,15 +184,17 @@ export async function POST(request: Request) {
       await admin.from('notifications').insert(notifications);
 
       // K. Log administrative action
-      await admin.from('admin_logs').insert({
-        admin_id: gate.user.id,
-        action_type: 'booking_force_assigned',
-        target_type: 'booking',
-        target_id: booking_id,
-        target_name: `Booking #${booking_id.substring(0, 8)}`,
-        old_value: { worker_id: oldWorkerId },
-        new_value: { worker_id },
-        reason,
+      const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      await admin.rpc('log_admin_action', {
+        p_admin_id: gate.user.id,
+        p_action_type: 'booking_force_assigned',
+        p_target_type: 'booking',
+        p_target_id: booking_id,
+        p_target_name: `Booking #${booking_id.substring(0, 8)}`,
+        p_old_value: { worker_id: oldWorkerId },
+        p_new_value: { worker_id },
+        p_reason: reason,
+        p_ip_address: ipAddress
       });
 
       return createResponse({ success: true });

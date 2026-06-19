@@ -196,8 +196,30 @@ export async function middleware(request: NextRequest) {
   // Strict Enterprise Security Headers
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   
+  if (process.env.NODE_ENV === 'production') {
+    response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  } else {
+    // Clear any cached HSTS policy for localhost to stop automatic https:// redirects
+    response.headers.set('Strict-Transport-Security', 'max-age=0');
+  }
+
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+  
+  // Production HTTPS Enforcement
+  if (process.env.NODE_ENV === 'production') {
+    const host = request.headers.get('host') || request.nextUrl.host || '';
+    const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+    
+    if (!isLocalhost) {
+      const forwardedProto = request.headers.get('x-forwarded-proto');
+      if (forwardedProto && forwardedProto !== 'https') {
+        return applyCookies(NextResponse.redirect(`https://${host}${pathname}`, 301));
+      }
+    }
+  }
+
   if (isAdminRoute) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.headers.set('Pragma', 'no-cache');

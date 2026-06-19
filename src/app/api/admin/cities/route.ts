@@ -66,6 +66,19 @@ export async function POST(request: Request) {
 
     if (error) throw error;
 
+    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    await supabase.rpc('log_admin_action', {
+      p_admin_id: gate.user.id,
+      p_action_type: 'config_city_created',
+      p_target_type: 'city',
+      p_target_id: data.id,
+      p_target_name: `City: ${body.name}`,
+      p_old_value: null,
+      p_new_value: { name: body.name, slug: body.slug, is_active: body.is_active },
+      p_reason: 'Created new city configuration',
+      p_ip_address: ipAddress
+    });
+
     return createResponse({ city: data }, 201);
   } catch (error) {
     return handleApiError(error);
