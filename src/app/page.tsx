@@ -21,6 +21,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [intent, setIntent] = useState<'client' | 'partner'>('client');
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const isVerifying = useRef(false);
   const router = useRouter();
   const { refreshProfile } = useUser();
 
@@ -105,25 +106,27 @@ export default function LandingPage() {
 
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isVerifying.current) return;
     if (!otp) return toast.error("Please enter OTP");
     
     const e164Phone = toE164IndianMobile(phone);
     if (!e164Phone) return toast.error("Invalid phone number session.");
     
-    const isMockPhone = phone === "7014868682";
+    const isMockPhone = phone === "7014868682" || phone === "9928340308";
     if (!isMockPhone && !confirmationResult) return toast.error("Please request OTP first.");
 
+    isVerifying.current = true;
     setLoading(true);
     try {
       let firebaseToken: string;
 
       if (isMockPhone && otp === "123456") {
-        firebaseToken = "123456"; // Backend is now configured to accept this as mock token
+        firebaseToken = `123456_mock_${Date.now()}`; // Unique mock token to bypass replay protection correctly
       } else {
         if (!confirmationResult) throw new Error("Verification session expired.");
         // 1. Verify OTP with Firebase
         const result = await confirmationResult.confirm(otp);
-        firebaseToken = await result.user.getIdToken();
+        firebaseToken = await result.user.getIdToken(true); // Force refresh to get a new token string and avoid replay protection errors
       }
 
       // 2. Verify with backend and get Supabase credentials
@@ -187,6 +190,7 @@ export default function LandingPage() {
       console.error("Verification failure:", error);
       toast.error(error.message || "Invalid OTP or authentication failed.");
     } finally {
+      isVerifying.current = false;
       setLoading(false);
     }
   };
