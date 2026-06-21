@@ -245,7 +245,6 @@ export async function POST(request: Request) {
           status: finalBooking?.status || booking.status || 'otp_generated',
         },
       });
-    }
 
     return createResponse({
       success: true,
