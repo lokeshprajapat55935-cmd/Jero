@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LanguageToggle } from "@/components/language/LanguageToggle";
 import { useUser } from "@/providers/UserProvider";
 import { useI18n } from "@/providers/I18nProvider";
+import { config } from "@/config";
 
 export default function LandingPage() {
   const { t } = useI18n();
@@ -69,7 +70,7 @@ export default function LandingPage() {
       // Check rate limit via backend optional start
       await authService.sendOtp(e164Phone);
       
-      const isMockPhone = phone === "7014868682" || phone === "9928340308";
+      const isMockPhone = config.env.isDev && (phone === "7014868682" || phone === "9928340308");
       
       if (isMockPhone) {
         // Skip Firebase entirely for mock phones to prevent billing/recaptcha issues
@@ -112,7 +113,7 @@ export default function LandingPage() {
     const e164Phone = toE164IndianMobile(phone);
     if (!e164Phone) return toast.error("Invalid phone number session.");
     
-    const isMockPhone = phone === "7014868682" || phone === "9928340308";
+    const isMockPhone = config.env.isDev && (phone === "7014868682" || phone === "9928340308");
     if (!isMockPhone && !confirmationResult) return toast.error("Please request OTP first.");
 
     isVerifying.current = true;
@@ -140,6 +141,13 @@ export default function LandingPage() {
 
       // 4. Set secure cookies for middleware protection
       const uidCookieName = intent === 'partner' ? 'zolvo_worker_uid' : 'zolvo_customer_uid';
+      const otherUidCookieName = intent === 'partner' ? 'zolvo_customer_uid' : 'zolvo_worker_uid';
+      const otherRoleCookieName = intent === 'partner' ? 'zolvo_customer_role' : 'zolvo_worker_role';
+      
+      // Clear opposing role cookies to prevent conflicting session states
+      document.cookie = `${otherUidCookieName}=; path=/; max-age=0;`;
+      document.cookie = `${otherRoleCookieName}=; path=/; max-age=0;`;
+      
       document.cookie = `${uidCookieName}=${data.user.id}; path=/; max-age=2592000;`;
       
       // 5. Ensure profile exists and get metadata

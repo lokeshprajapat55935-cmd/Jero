@@ -42,10 +42,10 @@ const WORKER_STEPS: Array<{
     color: 'bg-amber-500 hover:bg-amber-600',
   },
   {
-    label: 'Finish Job & Request OTP',
+    label: 'Finish Job & Submit Bill',
     action: 'Mark Work Complete',
-    nextStatus: 'work_completed_pending_otp',
-    fromStatuses: ['work_started', 'started', 'item_approved'],
+    nextStatus: 'bill_submitted',
+    fromStatuses: ['work_started', 'started'],
     color: 'bg-teal-600 hover:bg-teal-700',
   },
 ];
@@ -301,56 +301,33 @@ export default function WorkerJobDetailPage() {
         </div>
 
         {/* Materials & Item Approval Flow */}
-        {['work_started', 'started', 'work_completed', 'awaiting_item_approval', 'item_approved', 'work_completed_pending_otp', 'otp_generated', 'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified', 'completed'].includes(booking.status) && (
+        {['work_started', 'started', 'work_completed', 'bill_submitted', 'customer_review', 'payment_pending', 'awaiting_item_approval', 'item_approved', 'work_completed_pending_otp', 'otp_generated', 'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified', 'completed'].includes(booking.status) && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">
             <BookingMaterials
               bookingId={booking.id}
-              readOnly={['item_approved', 'work_completed_pending_otp', 'otp_generated', 'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified', 'completed'].includes(booking.status)}
+              workerId={booking.worker_id}
+              serviceCategory={booking.category}
+              readOnly={['bill_submitted', 'customer_review', 'payment_pending', 'item_approved', 'work_completed_pending_otp', 'otp_generated', 'otp_verified', 'awaiting_payment', 'payment_processing', 'payment_verified', 'completed'].includes(booking.status)}
             />
 
             {['work_started', 'started', 'work_completed'].includes(booking.status) && (
               <div className="flex flex-col gap-2 pt-2 border-t border-gray-50">
                 <button
-                  onClick={() => updateStatus('awaiting_item_approval', 'Materials added, awaiting customer approval')}
+                  onClick={() => updateStatus('bill_submitted', 'Bill finalized and submitted')}
                   disabled={isUpdating}
-                  className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-50"
+                  className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-50 shadow-md hover:shadow-lg"
                 >
-                  {isUpdating ? 'Updating...' : 'Submit Items for Client Approval'}
-                </button>
-                <button
-                  onClick={() => updateStatus('work_completed_pending_otp', 'No materials used, requesting completion OTP')}
-                  disabled={isUpdating}
-                  className="w-full h-10 text-gray-500 hover:text-gray-700 font-bold text-xs underline transition-all disabled:opacity-50"
-                >
-                  {isUpdating ? 'Updating...' : 'No Materials? Skip to OTP →'}
+                  {isUpdating ? 'Updating...' : 'Submit Final Bill'}
                 </button>
               </div>
             )}
 
-            {booking.status === 'awaiting_item_approval' && (
+            {['bill_submitted', 'customer_review', 'payment_pending'].includes(booking.status) && (
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-center gap-3">
                 <Loader2 className="w-5 h-5 text-amber-600 animate-spin shrink-0" />
                 <p className="text-xs font-bold text-amber-800">
-                  Waiting for customer to approve material charges...
+                  Waiting for customer to review and accept the final bill...
                 </p>
-              </div>
-            )}
-
-            {booking.status === 'item_approved' && (
-              <div className="space-y-3 pt-2 border-t border-gray-50">
-                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <p className="text-xs font-bold text-emerald-800">
-                    Materials approved! You can now request the completion OTP.
-                  </p>
-                </div>
-                <button
-                  onClick={() => updateStatus('work_completed_pending_otp', 'Items approved, generating OTP')}
-                  disabled={isUpdating}
-                  className="w-full h-12 bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-50"
-                >
-                  {isUpdating ? 'Generating...' : 'Finish Job & Request OTP'}
-                </button>
               </div>
             )}
           </div>

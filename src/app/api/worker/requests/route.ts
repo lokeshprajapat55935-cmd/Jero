@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const userId = await getAuthUserId(request as any, supabase);
+    console.log(`[DEBUG-WORKER] /api/worker/requests -> userId resolved: ${userId}`);
     if (!userId) return createErrorResponse('Unauthorized', 401);
 
     const admin = createAdminClient();

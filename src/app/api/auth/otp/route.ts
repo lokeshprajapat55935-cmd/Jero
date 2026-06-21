@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
       }
 
       const devOtpCode = config.env.otp.devCode || '123456';
-      const isMockToken = token.startsWith(`${devOtpCode}_mock_`) && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE || phone === `+91${TEST_MOBILE_2}` || phone === TEST_MOBILE_2 || config.env.isDev);
+      const isMockToken = config.env.isDev && token.startsWith(`${devOtpCode}_mock_`) && (phone === `+91${TEST_MOBILE}` || phone === TEST_MOBILE || phone === `+91${TEST_MOBILE_2}` || phone === TEST_MOBILE_2);
 
       if (!isMockToken) {
         // Verify Firebase ID Token via Google Identity Toolkit

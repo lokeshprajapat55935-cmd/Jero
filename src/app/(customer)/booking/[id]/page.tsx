@@ -120,7 +120,7 @@ export default function BookingDetailPage() {
     booking.otp_code = completionOtp;
   }
   const showOtp = (booking.status === 'work_completed_pending_otp' || booking.status === 'otp_generated') && (booking.otp_code || completionOtp);
-  const showPayment = booking.status === 'awaiting_payment' || booking.status === 'otp_verified';
+  const showPayment = ['awaiting_payment', 'otp_verified', 'payment_pending'].includes(booking.status);
   const isCompleted = booking.status === 'completed' || booking.status === 'paid_completed';
 
   const customerLat = booking.latitude;
@@ -376,45 +376,64 @@ export default function BookingDetailPage() {
           </div>
         )}
 
-          {/* Item Approval */}
-
-        {booking.status === 'awaiting_item_approval' && (
+        {/* Bill Approval */}
+        {['bill_submitted', 'customer_review'].includes(booking.status) && (
           <div className="bg-white rounded-2xl border-2 border-amber-100 shadow-sm p-5 space-y-4">
             <div className="flex items-center gap-3 mb-2">
-              <Package className="w-6 h-6 text-amber-500" />
+              <Banknote className="w-6 h-6 text-amber-500" />
               <div>
-                <h3 className="text-lg font-black text-gray-900">Approve Material Charges</h3>
-                <p className="text-xs text-gray-500">The worker has added materials/extras. Please review and approve to proceed.</p>
+                <h3 className="text-lg font-black text-gray-900">Review Final Bill</h3>
+                <p className="text-xs text-gray-500">Please review the service charges and materials before payment.</p>
               </div>
+            </div>
+            
+            <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between items-center border border-gray-100 mb-2">
+               <span className="font-medium text-gray-600">Service + Visit Charge</span>
+               <span className="font-bold text-gray-900">₹{((booking.service_charge ?? 0) + (booking.visit_charge ?? 0)).toLocaleString('en-IN')}</span>
             </div>
             
             <BookingMaterials bookingId={booking.id} readOnly={true} />
 
-            <div className="pt-4 border-t border-gray-100">
+            <div className="pt-4 border-t border-gray-100 flex gap-2">
               <Button
                 onClick={async () => {
-                  try {
-                    const res = await fetch('/api/bookings/items', {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ booking_id: booking.id }),
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      toast.success('Materials approved!');
-                      fetchBooking();
-                    } else {
-                      toast.error(data.error || 'Approval failed');
-                    }
-                  } catch (err) {
-                    toast.error('Failed to approve materials');
+                  if(confirm("Are you sure you want to dispute this bill?")) {
+                    await updateStatus('pending_review', 'Customer disputed the bill');
                   }
                 }}
                 disabled={isUpdating}
-                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
+                className="w-1/3 h-12 bg-white hover:bg-gray-50 text-red-600 border border-gray-200 font-bold rounded-xl"
               >
-                {isUpdating ? 'Approving...' : 'Approve & Proceed ✓'}
+                Dispute
               </Button>
+              <Button
+                onClick={async () => {
+                  try {
+                    const nextStatus = booking.payment_method === 'cash' ? 'otp_generated' : 'payment_pending';
+                    await updateStatus(nextStatus, 'Bill accepted by customer');
+                    fetchBooking();
+                  } catch (err) {
+                    toast.error('Failed to accept bill');
+                  }
+                }}
+                disabled={isUpdating}
+                className="w-2/3 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg"
+              >
+                {isUpdating ? 'Accepting...' : 'Accept & Continue ✓'}
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        {/* Pending Review / Dispute state */}
+        {booking.status === 'pending_review' && (
+          <div className="bg-red-50 rounded-2xl border border-red-100 shadow-sm p-5 flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-md font-black text-red-900">Bill Disputed</h3>
+              <p className="text-xs text-red-700 mt-1">
+                You have disputed the bill. Our support team will review this shortly.
+              </p>
             </div>
           </div>
         )}

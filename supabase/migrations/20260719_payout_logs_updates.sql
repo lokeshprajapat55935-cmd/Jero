@@ -25,12 +25,14 @@ CREATE INDEX IF NOT EXISTS idx_payout_logs_reference_id ON payout_logs(reference
 ALTER TABLE payout_logs ENABLE ROW LEVEL SECURITY;
 
 -- Workers can view their own payouts
+DROP POLICY IF EXISTS "Workers can view own payouts" ON payout_logs;
 CREATE POLICY "Workers can view own payouts"
   ON payout_logs FOR SELECT
   USING (auth.uid() = worker_id);
 
 -- Only server (admin) can insert/update payout_logs
 -- (The API uses createAdminClient which bypasses RLS)
+DROP POLICY IF EXISTS "Admin only insert" ON payout_logs;
 CREATE POLICY "Admin only insert"
   ON payout_logs FOR INSERT
   WITH CHECK (false);  -- Blocked from client; only admin client can insert

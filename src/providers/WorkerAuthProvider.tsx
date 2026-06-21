@@ -9,7 +9,9 @@ import logger from '@/lib/logger';
 import type { Profile } from '@/types';
 import { createWorkerClient } from '@/lib/supabase/client';
 import { UserContext } from './UserContext';
-import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { config } from '@/config';
+import type { User } from '@supabase/supabase-js';
 
 const AUTH_TIMEOUT_MS = 5000;
 
@@ -104,7 +106,7 @@ export function WorkerAuthProvider({ children }: { children: React.ReactNode }) 
         }
         setLoading(false);
       } else if (!session && active) {
-        const isMockTest = typeof window !== 'undefined' && 
+        const isMockTest = typeof window !== 'undefined' && config.env.isDev &&
           ((localStorage.getItem('zolvo_worker_user') || '').includes('test_') || 
            document.cookie.includes('zolvo_worker_uid=test_'));
         
@@ -123,7 +125,7 @@ export function WorkerAuthProvider({ children }: { children: React.ReactNode }) 
         const supabaseUser = session?.user;
 
         if (!supabaseUser) {
-          const isMockTest = typeof window !== 'undefined' && 
+          const isMockTest = typeof window !== 'undefined' && config.env.isDev &&
             ((localStorage.getItem('zolvo_worker_user') || '').includes('test_') || 
              document.cookie.includes('zolvo_worker_uid=test_'));
 

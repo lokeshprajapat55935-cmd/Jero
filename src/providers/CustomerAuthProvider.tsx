@@ -10,6 +10,7 @@ import type { Profile } from '@/types';
 import { createCustomerClient } from '@/lib/supabase/client';
 import { UserContext } from './UserContext';
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { config } from '@/config';
 
 const AUTH_TIMEOUT_MS = 5000;
 
@@ -103,7 +104,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         }
         setLoading(false);
       } else if (!session && active) {
-        const isMockTest = typeof window !== 'undefined' && 
+        const isMockTest = typeof window !== 'undefined' && config.env.isDev &&
           ((localStorage.getItem('zolvo_customer_user') || '').includes('test_') || 
            document.cookie.includes('zolvo_customer_uid=test_'));
         
@@ -122,7 +123,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         const supabaseUser = session?.user;
 
         if (!supabaseUser) {
-          const isMockTest = typeof window !== 'undefined' && 
+          const isMockTest = typeof window !== 'undefined' && config.env.isDev &&
             ((localStorage.getItem('zolvo_customer_user') || '').includes('test_') || 
              document.cookie.includes('zolvo_customer_uid=test_'));
 

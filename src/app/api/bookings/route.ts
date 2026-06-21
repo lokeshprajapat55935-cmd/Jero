@@ -39,6 +39,10 @@ const updateBookingSchema = z.object({
     'work_started',
     'started',
     'work_completed',
+    'bill_submitted',
+    'customer_review',
+    'pending_review',
+    'payment_pending',
     'work_completed_pending_otp',
     'awaiting_otp',
     'awaiting_item_approval',
@@ -485,13 +489,13 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // Intercept: Worker Work Completed & OTP Generation (Unified handler for aliases)
-    if (['work_completed_pending_otp', 'awaiting_otp', 'otp_generated'].includes(validated.status)) {
+    // Intercept: OTP Generation (Unified handler for aliases and new flow)
+    if (['otp_generated', 'work_completed_pending_otp', 'awaiting_otp'].includes(validated.status)) {
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const otpHash = hashOtp(otpCode);
 
       // Force transition if it's currently in an active work state and RPC might be too restrictive
-      const activeWorkStates = ['work_started', 'started', 'in_progress', 'item_approved', 'work_completed'];
+      const activeWorkStates = ['work_started', 'started', 'in_progress', 'item_approved', 'work_completed', 'customer_review', 'payment_pending', 'payment_verified', 'pending_review'];
       if (activeWorkStates.includes(existing.status)) {
         await admin
           .from('bookings')
@@ -534,7 +538,7 @@ export async function PATCH(request: Request) {
         user_id: existing.client_id,
         type: 'booking_otp_completion',
         title: 'Job Completion OTP',
-        content: `Your worker has marked the job as completed. Use OTP ${otpCode} to confirm completion. Only share it if you are satisfied.`,
+        content: `Your completion OTP is ${otpCode}. Provide this to the professional ONLY if you are satisfied with the completed work.`,
         link_url: `/booking/${id}`,
         metadata: {
           booking_id: id,

@@ -18,6 +18,10 @@ export const BOOKING_STATUSES = [
   'started',
   'in_progress',       // Alias for work_started
   'work_completed',
+  'bill_submitted',
+  'customer_review',
+  'pending_review',
+  'payment_pending',
   'work_completed_pending_otp',
   'awaiting_otp',      // Alias for work_completed_pending_otp
   'otp_generated',     // Alias for work_completed_pending_otp
@@ -47,10 +51,14 @@ const TRANSITIONS: Record<string, BookingStatus[]> = {
   worker_arriving: ['arrived', 'work_started', 'started', 'cancelled'],
   en_route: ['arrived', 'started', 'cancelled'],
   arrived: ['work_started', 'started', 'cancelled'],
-  work_started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
-  started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
-  in_progress: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed'],
-  work_completed: ['awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'completed'],
+  work_started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed', 'bill_submitted'],
+  started: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed', 'bill_submitted'],
+  in_progress: ['work_completed', 'awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'cancelled', 'disputed', 'bill_submitted'],
+  work_completed: ['awaiting_item_approval', 'work_completed_pending_otp', 'otp_generated', 'completed', 'bill_submitted'],
+  bill_submitted: ['customer_review'],
+  customer_review: ['payment_pending', 'otp_generated', 'pending_review'],
+  pending_review: ['payment_pending', 'otp_generated', 'cancelled'],
+  payment_pending: ['otp_generated', 'disputed'],
   awaiting_item_approval: ['item_approved', 'disputed', 'cancelled'],
   item_approved: ['awaiting_payment', 'work_completed_pending_otp', 'otp_generated', 'disputed', 'cancelled'],
   awaiting_payment: ['payment_processing', 'payment_verified', 'work_completed_pending_otp', 'otp_generated', 'completed', 'disputed'],
@@ -78,7 +86,8 @@ export function isActiveStatus(status: BookingStatus): boolean {
   const activeStates: BookingStatus[] = [
     'accepted', 'worker_arriving', 'en_route', 'arrived', 
     'work_started', 'started', 'in_progress', 
-    'work_completed', 'work_completed_pending_otp', 'awaiting_otp', 'otp_generated',
+    'work_completed', 'bill_submitted', 'customer_review', 'payment_pending', 'pending_review',
+    'work_completed_pending_otp', 'awaiting_otp', 'otp_generated',
     'awaiting_item_approval', 'item_approved', 'otp_verified',
     'awaiting_payment', 'payment_processing', 'payment_verified'
   ];
@@ -106,6 +115,10 @@ export const STATUS_LABELS: Record<BookingStatus, string> = {
   started: 'Work Started',
   in_progress: 'In Progress',
   work_completed: 'Work Done',
+  bill_submitted: 'Bill Submitted',
+  customer_review: 'Customer Review',
+  pending_review: 'Under Review',
+  payment_pending: 'Payment Pending',
   work_completed_pending_otp: 'Awaiting Verification',
   awaiting_otp: 'Awaiting OTP',
   awaiting_item_approval: 'Awaiting Item Approval',

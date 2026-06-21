@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     // Fetch booking status to check if it's the new OTP system
     const { data: existingBooking, error: bookingFetchError } = await admin
       .from("bookings")
-      .select("status, client_id, worker_id, service_charge, total_price, payment_method")
+      .select("status, client_id, worker_id, service_charge, visit_charge, material_charge, total_price, payment_method, commission_deducted")
       .eq("id", booking_id)
       .maybeSingle();
 
@@ -74,101 +74,121 @@ export async function POST(request: Request) {
       return createErrorResponse(bookingFetchError?.message || "Booking not found", 404);
     }
 
+    if (existingBooking.worker_id !== userId) {
+      return createErrorResponse('Only the assigned professional can verify completion.', 403);
+    }
+
     const inputHash = hashOtp(otp);
 
-    if (existingBooking.status === "work_completed_pending_otp") {
-      // Run new OTP completion verification
-      const { data: rpcResult, error: rpcError } = await admin.rpc('verify_completion_otp', {
-        p_booking_id: booking_id,
-        p_otp_hash: inputHash,
-        p_worker_id: userId,
-      });
+    // Fetch OTP record
+    const { data: otpRecord } = await admin
+      .from('booking_otps')
+      .select('*')
+      .eq('booking_id', booking_id)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (rpcError) throw rpcError;
-
-      const result = rpcResult as { success: boolean; error?: string; code?: number };
-      if (!result?.success) {
-        return createErrorResponse(result?.error || 'Verification failed', result?.code || 400);
-      }
-
-      // Retrieve updated booking details
-      const { data: updatedBooking, error: fetchError } = await admin
-        .from("bookings")
-        .select(BOOKING_SELECT)
-        .eq("id", booking_id)
-        .single();
-
-      if (fetchError || !updatedBooking) {
-        return createErrorResponse("Failed to fetch updated booking details", 500);
-      }
-
-      // Notify client that job is completed
-      await admin.from("notifications").insert({
-        user_id: updatedBooking.client_id,
-        type: "booking_update",
-        title: "Booking Completed ✓",
-        content: `Your booking for ${updatedBooking.category} is completed. OTP verified successfully.`,
-        link_url: "/activity",
-        metadata: {
-          booking_id: updatedBooking.id,
-          status: "completed",
-        },
-      });
-
-      return createResponse(updatedBooking);
+    if (!otpRecord) {
+      return createErrorResponse('Verification code has expired or is invalid. Request a new one.', 400);
     }
 
-    // LEGACY OTP SYSTEM:
-    // 2. Call secure atomic database OTP verification function
-    const { data: rpcResult, error: rpcError } = await admin.rpc('verify_booking_otp', {
-      p_booking_id: booking_id,
-      p_otp_hash: inputHash,
-      p_user_id: userId,
+    if (otpRecord.attempts >= otpRecord.max_attempts) {
+      await admin.from('bookings').update({ status: 'disputed', updated_at: new Date().toISOString() }).eq('id', booking_id);
+      return createErrorResponse('Too many verification attempts. Booking marked as disputed.', 400);
+    }
+
+    if (otpRecord.otp_hash !== inputHash) {
+      await admin.from('booking_otps').update({ attempts: otpRecord.attempts + 1 }).eq('id', otpRecord.id);
+      return createErrorResponse('Invalid OTP verification code.', 400);
+    }
+
+    // OTP Match!
+    await admin.from('booking_otps').update({ used: true }).eq('id', otpRecord.id);
+
+    // Calculate commission (10% of Service + Visit Charge only)
+    const commissionRate = 0.10;
+    const baseAmount = Number(existingBooking.service_charge || 0) + Number(existingBooking.visit_charge || 0);
+    const commissionAmount = Math.round(baseAmount * commissionRate * 100) / 100;
+
+    const isCash = existingBooking.payment_method === 'cash';
+
+    if (isCash && !existingBooking.commission_deducted) {
+      // Deduct commission from worker's wallet
+      const { data: wallet } = await admin.from('worker_wallets').select('balance').eq('worker_id', existingBooking.worker_id).single();
+      const currentBalance = wallet ? Number(wallet.balance) : 0;
+      const newBalance = currentBalance - commissionAmount;
+
+      await admin.from('worker_wallets').upsert({ worker_id: existingBooking.worker_id, balance: newBalance, updated_at: new Date().toISOString() });
+      await admin.from('wallet_transactions').insert({
+        worker_id: existingBooking.worker_id,
+        type: 'commission',
+        amount: commissionAmount,
+        balance_after: newBalance,
+        booking_id: booking_id,
+        description: `Platform commission (10%) on service charge for booking #${booking_id.substring(0, 8)}`,
+      });
+    }
+
+    if (!isCash && !existingBooking.commission_deducted) {
+      // Online payment. The worker gets (Service + Visit + Materials) - Commission
+      // Wait, is it 0 commission for online? The prompt says "Ensure commission applies only to Service + Travel, deducting only after OTP."
+      // This implies commission applies REGARDLESS of payment method.
+      const workerCredit = Number(existingBooking.total_price) - commissionAmount;
+      
+      const { data: wallet } = await admin.from('worker_wallets').select('balance').eq('worker_id', existingBooking.worker_id).single();
+      const currentBalance = wallet ? Number(wallet.balance) : 0;
+      const newBalance = currentBalance + workerCredit;
+
+      await admin.from('worker_wallets').upsert({ worker_id: existingBooking.worker_id, balance: newBalance, updated_at: new Date().toISOString() });
+      await admin.from('wallet_transactions').insert({
+        worker_id: existingBooking.worker_id,
+        type: 'online_credit',
+        amount: workerCredit,
+        balance_after: newBalance,
+        booking_id: booking_id,
+        description: `Online payment received minus commission for booking #${booking_id.substring(0, 8)}`,
+      });
+    }
+
+    const now = new Date().toISOString();
+    // Complete the booking
+    await admin.from('bookings').update({
+      status: 'completed',
+      payment_status: 'paid',
+      commission_deducted: true,
+      commission_amount: commissionAmount,
+      updated_at: now,
+      otp_used: true,
+    }).eq('id', booking_id);
+
+    await admin.from('active_bookings').delete().eq('booking_id', booking_id);
+    await admin.from('worker_availability').upsert({ worker_id: existingBooking.worker_id, status: 'available', last_active_at: now, current_booking_id: null });
+
+    await admin.from("booking_timeline").insert({
+      booking_id: booking_id,
+      status: "completed",
+      reason: `OTP verified and booking completed. Commission of ₹${commissionAmount} deducted.`,
+      created_by: userId,
     });
 
-    if (rpcError) throw rpcError;
+    const { data: updatedBooking } = await admin.from('bookings').select(BOOKING_SELECT).eq('id', booking_id).single();
 
-    const result = rpcResult as { success: boolean; reason?: string; code?: number };
-    if (!result?.success) {
-      return createErrorResponse(result?.reason || 'Verification failed', result?.code || 400);
-    }
-
-    // 3. Retrieve updated booking details
-    const { data: updatedBooking, error: fetchError } = await admin
-      .from("bookings")
-      .select(BOOKING_SELECT)
-      .eq("id", booking_id)
-      .single();
-
-    if (fetchError || !updatedBooking) {
-      return createErrorResponse("Failed to fetch updated booking details", 500);
-    }
-
-    // 4. Notify client — prompt them to pay
+    // Notify client
     await admin.from("notifications").insert({
       user_id: updatedBooking.client_id,
       type: "booking_update",
-      title: "Work Verified ✓",
-      content: `OTP verified. Please pay ₹${updatedBooking.total_price} via locked payment mode: ${updatedBooking.payment_method?.toUpperCase()} to complete the booking.`,
+      title: "Booking Completed ✓",
+      content: `Your booking for ${updatedBooking.category} is completed. OTP verified successfully.`,
       link_url: "/activity",
-      metadata: {
-        booking_id: updatedBooking.id,
-        status: "awaiting_payment",
-        payment_method: updatedBooking.payment_method,
-      },
+      metadata: { booking_id: updatedBooking.id, status: "completed" },
     });
-
-    // Determine commission preview for response
-    const commissionRate = 0.10;
-    const serviceCharge = Number(updatedBooking.service_charge || updatedBooking.total_price || 0);
-    const commissionPreview = updatedBooking.payment_method === 'cash'
-      ? Math.round(serviceCharge * commissionRate * 100) / 100
-      : 0;
 
     return createResponse({
       ...updatedBooking,
-      commission_preview: commissionPreview,
-      payment_method: updatedBooking.payment_method,
+      commission_preview: commissionAmount,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

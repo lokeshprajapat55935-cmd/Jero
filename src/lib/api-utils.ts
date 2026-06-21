@@ -10,6 +10,20 @@ import { verifyAdminSession, ADMIN_COOKIE_NAME } from '@/lib/admin/auth';
  */
 export async function getAuthUserId(request: NextRequest | Request, supabase: any): Promise<string | null> {
   let resolvedId: string | null = null;
+  let isCustomerApi = false;
+  let isWorkerApi = false;
+
+  try {
+    const urlStr = request.url || '';
+    if (urlStr) {
+      const url = new URL(urlStr);
+      const pathname = url.pathname;
+      isCustomerApi = pathname.startsWith('/api/customer/') || pathname.startsWith('/api/client/');
+      isWorkerApi = pathname.startsWith('/api/worker/') || pathname.startsWith('/api/dispatch/');
+    }
+  } catch (err) {
+    // Ignore URL parse errors
+  }
 
   // 1. Check for isolated admin session JWT (highest priority for admin-related flows)
   try {
@@ -31,7 +45,11 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
   if (!resolvedId) {
     try {
       const cookieHeader = request.headers.get('cookie') || '';
-      const match = cookieHeader.match(/(?:^|;\s*)(zolvo_worker_uid|zolvo_customer_uid)=([^;]+)/);
+      let cookieNameMatcher = '(zolvo_worker_uid|zolvo_customer_uid)';
+      if (isCustomerApi) cookieNameMatcher = 'zolvo_customer_uid';
+      if (isWorkerApi) cookieNameMatcher = 'zolvo_worker_uid';
+
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)(${cookieNameMatcher})=([^;]+)`));
       if (match && match[2]) {
         resolvedId = decodeURIComponent(match[2]);
         logger.info(`[getAuthUserId] found ${match[1]} from raw cookie: "${resolvedId}"`);
@@ -46,8 +64,16 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
     try {
       const reqWithCookies = request as any;
       if (typeof reqWithCookies.cookies?.get === 'function') {
-        const cookieUid = reqWithCookies.cookies.get('zolvo_worker_uid')?.value || 
-                          reqWithCookies.cookies.get('zolvo_customer_uid')?.value;
+        let cookieUid;
+        if (isCustomerApi) {
+          cookieUid = reqWithCookies.cookies.get('zolvo_customer_uid')?.value;
+        } else if (isWorkerApi) {
+          cookieUid = reqWithCookies.cookies.get('zolvo_worker_uid')?.value;
+        } else {
+          cookieUid = reqWithCookies.cookies.get('zolvo_worker_uid')?.value || 
+                            reqWithCookies.cookies.get('zolvo_customer_uid')?.value;
+        }
+        
         if (cookieUid) {
           resolvedId = cookieUid;
           logger.info(`[getAuthUserId] found user from request.cookies: "${resolvedId}"`);
@@ -57,6 +83,8 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
       // Ignore
     }
   }
+
+  logger.info(`[DEBUG-WORKER] getAuthUserId: Path=${request.url}, isWorkerApi=${isWorkerApi}, isCustomerApi=${isCustomerApi}, resolvedId=${resolvedId}`);
 
   if (!resolvedId) {
     try {
@@ -117,14 +145,15 @@ export async function getAuthUserId(request: NextRequest | Request, supabase: an
           .maybeSingle();
 
         const actualRole = profile?.role;
+        logger.info(`[DEBUG-WORKER] finalUserId: ${finalUserId}, actualRole in DB: ${actualRole}`);
         
+        // Strict isolation block
         if (isCustomerApi && actualRole === 'worker') {
-          logger.warn(`[Role Isolation] Blocked worker ${finalUserId} from accessing customer API: ${pathname}`);
+          logger.warn(`[Role Isolation] Worker attempting to access Customer API. Blocked. ID: ${finalUserId}`);
           return null;
         }
-
         if (isWorkerApi && actualRole === 'client') {
-          logger.warn(`[Role Isolation] Blocked client ${finalUserId} from accessing worker API: ${pathname}`);
+          logger.warn(`[Role Isolation] Customer attempting to access Worker API. Blocked. ID: ${finalUserId}`);
           return null;
         }
       }

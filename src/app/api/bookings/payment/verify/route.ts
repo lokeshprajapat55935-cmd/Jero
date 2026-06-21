@@ -6,9 +6,6 @@ import { z } from "zod";
 
 const verifyPaymentSchema = z.object({
   booking_id: z.string().uuid(),
-  payment_method: z.enum(["cash", "upi", "card"]),
-  payment_reference: z.string().optional(),
-  material_charge: z.number().min(0).optional(),
   razorpay_order_id: z.string().optional(),
   razorpay_payment_id: z.string().optional(),
   razorpay_signature: z.string().optional(),
@@ -73,12 +70,16 @@ export async function POST(request: Request) {
     if (!booking) return createErrorResponse("Booking not found", 404);
 
     // 3. Enforce Strict State Verification
-    const allowedStatuses = ["item_approved", "awaiting_payment", "payment_processing", "otp_verified"];
+    const allowedStatuses = ["item_approved", "awaiting_payment", "payment_processing", "payment_pending", "otp_verified"];
     if (!allowedStatuses.includes(booking.status)) {
       return createErrorResponse(
         `Cannot process payment for booking in status: ${booking.status}. Bill must be approved first.`,
         400
       );
+    }
+
+    if (booking.payment_method === 'cash') {
+      return createErrorResponse("Cash payments are verified implicitly via OTP in the new flow.", 400);
     }
 
     // 5. Update material charge if provided by client (approved material costs)
@@ -139,102 +140,75 @@ export async function POST(request: Request) {
     let creditAmount = 0;
 
     // 8. Handle Payment Method Specific Logic
-    if (body.payment_method === "cash") {
-      // CASH FLOW: Deduct platform commission from worker wallet
-      const { data: commissionResult, error: commissionError } = await admin
-        .rpc("process_booking_commission", { p_booking_id: booking.id });
+    // ONLINE FLOW (UPI/CARD): Enforce Razorpay Signature Validation
+    if (!body.razorpay_order_id || !body.razorpay_payment_id || !body.razorpay_signature) {
+      return createErrorResponse("Missing required payment verification details", 400);
+    }
 
-      if (commissionError) {
-        const { data: currentBooking } = await admin.from('bookings').select('status').eq('id', booking.id).single();
-        if (currentBooking?.status === 'completed') {
-          return createResponse({ success: true, message: 'Payment was already processed' });
-        }
-        await handlePaymentFailure(admin, booking.id, transactionRecord.id, commissionError.message, userId, body.payment_method);
-        return createErrorResponse(`Cash commission deduction failed: ${commissionError.message}`, 500);
-      }
+    const provider = getPaymentProvider();
+    const verification = await provider.verifyPayment({
+      razorpay_order_id: body.razorpay_order_id,
+      razorpay_payment_id: body.razorpay_payment_id,
+      razorpay_signature: body.razorpay_signature,
+    });
 
-      const result = commissionResult as { success: boolean; commission?: number; reason?: string };
-      if (!result?.success) {
-        const { data: currentBooking } = await admin.from('bookings').select('status').eq('id', booking.id).single();
-        if (currentBooking?.status === 'completed') {
-          return createResponse({ success: true, message: 'Payment was already processed' });
-        }
-        await handlePaymentFailure(admin, booking.id, transactionRecord.id, result?.reason || "Commission logic error", userId, body.payment_method);
-        return createErrorResponse(`Commission processing failed: ${result?.reason || "Internal wallet error"}`, 500);
-      }
-
-      commissionAmount = result.commission || 0;
-
-      // Finalize Cash Booking
-      await admin
-        .from("bookings")
-        .update({
-          status: "completed",
-          payment_status: "paid",
-          payment_completed_at: now,
-          updated_at: now,
-        })
-        .eq("id", booking.id);
-    } else {
-      // ONLINE FLOW (UPI/CARD): Enforce Razorpay Signature Validation
-      if (!body.razorpay_order_id || !body.razorpay_payment_id || !body.razorpay_signature) {
-        return createErrorResponse("Missing required payment verification details", 400);
-      }
-
-      const provider = getPaymentProvider();
-      const verification = await provider.verifyPayment({
-        razorpay_order_id: body.razorpay_order_id,
-        razorpay_payment_id: body.razorpay_payment_id,
-        razorpay_signature: body.razorpay_signature,
-      });
-
-      if (!verification.success) {
-        await handlePaymentFailure(
-          admin, 
-          booking.id, 
-          transactionRecord.id, 
-          "Razorpay signature verification failed", 
-          userId, 
-          body.payment_method
-        );
-        return createErrorResponse("Payment signature verification failed", 400);
-      }
-
-      await admin
-        .from("bookings")
-        .update({
-          status: "payment_verified",
-          payment_status: "paid",
-          payment_completed_at: now,
-          updated_at: now,
-          payment_reference: body.razorpay_payment_id,
-        })
-        .eq("id", booking.id);
-      
-      // Note: For online payments, wallet credit and commission deduction happen in verify_completion_otp
-      // OR in a separate RPC. The user workflow says:
-      // "online payment -> OTP verified -> wallet updated -> commission deducted -> booking completed"
+    if (!verification.success) {
+      await handlePaymentFailure(
+        admin, 
+        booking.id, 
+        transactionRecord.id, 
+        "Razorpay signature verification failed", 
+        userId, 
+        booking.payment_method
+      );
+      return createErrorResponse("Payment signature verification failed", 400);
     }
 
     await admin.from("payment_transactions").update({ payment_status: "paid" }).eq("id", transactionRecord.id);
+
+    // Generate OTP
+    const { hashOtp } = await import('@/lib/booking/otp-crypto');
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = hashOtp(otpCode);
+
+    const { data: genResult, error: genError } = await admin.rpc('generate_completion_otp', {
+      p_booking_id: booking.id,
+      p_otp_hash: otpHash,
+      p_worker_id: booking.worker_id,
+    });
+
+    if (genError) {
+      console.error('[Payment Verify] RPC generate_completion_otp Error:', genError);
+      // We still update the booking status to otp_generated even if RPC fails due to existing OTP
+    }
+
+    await admin
+      .from("bookings")
+      .update({
+        status: "otp_generated",
+        payment_status: "paid",
+        payment_completed_at: now,
+        updated_at: now,
+        payment_reference: body.razorpay_payment_id,
+      })
+      .eq("id", booking.id);
 
     // Log successful verification
     await admin.from("payment_verifications").insert({
       booking_id: booking.id,
       transaction_id: transactionRecord.id,
-      payment_method: body.payment_method,
-      reference_id: body.payment_reference || null,
+      payment_method: booking.payment_method,
+      reference_id: body.razorpay_payment_id || null,
       status: "verified",
-      verification_notes: `${body.payment_method.toUpperCase()} payment verified.`,
+      verification_notes: `${booking.payment_method.toUpperCase()} payment verified.`,
       verified_by: userId,
       verified_at: now,
     });
     
-    const newStatus = body.payment_method === 'cash' ? 'completed' : 'payment_verified';
     await admin.from("booking_timeline").insert({
       booking_id: booking.id,
-      status: newStatus,
-      reason: `${body.payment_method.toUpperCase()} payment confirmed. ${body.payment_method === 'cash' ? `Commission of ₹${commissionAmount} deducted.` : 'Status moved to payment_verified.'}`,
+      status: "otp_generated",
+      reason: `Online payment confirmed. Generated OTP for completion.`,
       created_by: userId,
     });
 
@@ -248,31 +222,27 @@ export async function POST(request: Request) {
     // Notify Client
     await admin.from("notifications").insert({
       user_id: booking.client_id,
-      type: "booking_update",
-      title: "Payment Confirmed ✓",
-      content: body.payment_method === "cash"
-        ? `Cash payment confirmed for ${booking.category} booking.`
-        : `Online payment processed. Receipt reference: ${body.payment_reference}`,
-      link_url: "/activity",
+      type: "booking_otp_completion",
+      title: "Payment Confirmed & OTP Generated ✓",
+      content: `Your completion OTP is ${otpCode}. Provide this to the professional ONLY if you are satisfied with the completed work.`,
+      link_url: `/booking/${booking.id}`,
       metadata: {
         booking_id: booking.id,
-        status: finalBooking?.status || booking.status || 'completed',
+        otp_code: otpCode,
+        status: finalBooking?.status || booking.status || 'otp_generated',
       },
     });
 
     // Notify Worker
-    if (booking.worker_id) {
       await admin.from("notifications").insert({
         user_id: booking.worker_id,
         type: "booking_update",
-        title: "Earning Credited 🪙",
-        content: body.payment_method === "cash"
-          ? `Cash collected. Wallet charged platform commission of ₹${commissionAmount}.`
-          : `Online payment received. ₹${creditAmount} credited to your wallet (Zero commission).`,
+        title: "Payment Confirmed 🪙",
+        content: `Online payment confirmed. Please ask the customer for the OTP to complete the booking.`,
         link_url: "/worker/dashboard",
         metadata: {
           booking_id: booking.id,
-          status: finalBooking?.status || booking.status || 'completed',
+          status: finalBooking?.status || booking.status || 'otp_generated',
         },
       });
     }
@@ -280,10 +250,7 @@ export async function POST(request: Request) {
     return createResponse({
       success: true,
       booking: finalBooking || booking,
-      payment_method: body.payment_method,
       amount: finalTotalPrice,
-      commission_deducted: commissionAmount,
-      credit_received: creditAmount,
     });
 
   } catch (error) {

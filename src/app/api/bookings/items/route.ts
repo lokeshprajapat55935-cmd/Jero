@@ -6,6 +6,7 @@ import { z } from 'zod';
 const addItemSchema = z.object({
   booking_id: z.string().uuid(),
   name: z.string().min(1),
+  category: z.string().optional(),
   quantity: z.number().int().positive(),
   unit_price: z.number().nonnegative(),
   notes: z.string().optional(),
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       .insert({
         booking_id: validated.booking_id,
         name: validated.name,
+        category: validated.category || null,
         quantity: validated.quantity,
         unit_price: validated.unit_price,
         total_price: itemTotal,
@@ -113,11 +115,7 @@ export async function POST(request: Request) {
     const totalMaterials = (items || []).reduce((sum, item) => sum + Number(item.total_price), 0);
 
     // Update material charge on booking.
-    // Transition status to awaiting_item_approval automatically if it was in a preliminary completion state.
-    let newStatus = booking.status;
-    if (['work_started', 'started', 'work_completed'].includes(booking.status)) {
-      newStatus = 'awaiting_item_approval';
-    }
+    const newStatus = booking.status;
     const { data: updatedBooking, error: updateErr } = await admin
       .from('bookings')
       .update({
