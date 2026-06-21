@@ -234,17 +234,17 @@ export async function POST(request: Request) {
     });
 
     // Notify Worker
-      await admin.from("notifications").insert({
-        user_id: booking.worker_id,
-        type: "booking_update",
-        title: "Payment Confirmed 🪙",
-        content: `Online payment confirmed. Please ask the customer for the OTP to complete the booking.`,
-        link_url: "/worker/dashboard",
-        metadata: {
-          booking_id: booking.id,
-          status: finalBooking?.status || booking.status || 'otp_generated',
-        },
-      });
+    await admin.from("notifications").insert({
+      user_id: booking.worker_id,
+      type: "booking_update",
+      title: "Payment Confirmed 🪙",
+      content: `Online payment confirmed. Please ask the customer for the OTP to complete the booking.`,
+      link_url: "/worker/dashboard",
+      metadata: {
+        booking_id: booking.id,
+        status: finalBooking?.status || booking.status || 'otp_generated',
+      },
+    });
 
     return createResponse({
       success: true,
